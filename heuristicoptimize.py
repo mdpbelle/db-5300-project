@@ -33,16 +33,21 @@ def parse_sql_txt(file_path):
 if __name__ == "__main__":
     # set input file
     input_file = "input.txt"
+    non_comment_lines = 0
 
     # parse input file into each line
-    statements = parse_sql_txt(input_file)
+    all_statements = parse_sql_txt(input_file)
+    statements = []
 
     # parse each statement
-    for i, statement in enumerate(statements, 1):
+    for i, statement in enumerate(all_statements, 1):
         if statement[0] == "-" and statement[1] == "-":
-            print(f"Comment: {statement}")
+            print(f"Comment: {statement}") # FOR DEBUG ONLY
     # discard lines that start with two dashes '--' (comments)
-     
+        else: # add non-comment lines to new list
+            statements.append(statement)
+            non_comment_lines = non_comment_lines+1
+            print(f"Line {non_comment_lines}: {statement}") # FOR DEBUG ONLY
     # filter select clauses
     # filter project clauses
     # filter cartesian products
