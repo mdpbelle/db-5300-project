@@ -1,0 +1,6 @@
+SELECT E.Lname
+FROM EMPLOYEE E, WORKS_ON W, PROJECT P
+WHERE P.Pname=‘Aquarius’ AND
+      P.Pnumber=W.Pno AND
+      E.Essn=W.Ssn AND
+      E.Bdate>’1957-12-31’;
