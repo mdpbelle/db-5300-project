@@ -44,27 +44,31 @@ if __name__ == "__main__":
     where_clauses = []
     # list to hold from clauses aka relevant tables
     tables = []
+    selectivity_clause = {} # dict for holding clause:selectivity pairs (where selectivity of 0 is low and 1 is high)
 
     # parse input file into each line
     all_statements = parse_sql_txt(input_file)
 
-    # parse each statement
+    # parse each statement from all_statements to statements, removing comments
     for i, statement in enumerate(all_statements, 1):
+        # discard lines that start with two dashes '--' (comments)
         if statement[0] == "-" and statement[1] == "-":
             print(f"Comment: {statement}") # FOR DEBUG ONLY
-    # discard lines that start with two dashes '--' (comments)
-        else: # add non-comment lines to new list
+        # add non-comment lines to new list
+        else:
             statements.append(statement)
             non_comment_lines = non_comment_lines+1
             # print(f"Line {non_comment_lines}: {statement}") # FOR DEBUG ONLY
+    
+    # parses/sorts/filters each statement from statements to each clause list
     for i, statement in enumerate(statements, 1):
-    # filter select statements (PROJECT clauses)
+        # filter select_statements (PROJECT clauses)
         if statement[0] == "S" and statement[1] == "E" and statement[2] == "L":
             s = statement[7:].split(", ")
             for i in s:
                 select_statements.append(s)
             print(f"Project clauses: {s}")
-    # filter select (WHERE) clauses
+        # filter where_clauses (SELECT clauses)
         if statement[0] == "W" and statement[1] == "H" and statement[2] == "E" and statement[3] == "R" and statement[4] == "E":
             where_clauses.append(statement[6:-3])
             for k in range(i+1, len(statements)-1):
@@ -76,4 +80,22 @@ if __name__ == "__main__":
                         where_clauses.append(s)
             for j, c in enumerate(where_clauses, 1):
                 print(f"Where clause: {c}")
-    # filter cartesian products
+        # filter tables from FROM statement (JOINS needed)
+        if statement[0] == "F" and statement[1] == "R" and statement[2] == "O" and statement[3] == "M":
+            tables = statement[5:].split(", ")
+            for j, t in enumerate(tables, 1):
+                print(f"table: {t}")
+    
+    # parses each WHERE clause to a join condition
+    for i, c in enumerate(where_clauses, 1):
+        # prioritize equality for selectivity
+        if "=" in c:
+            print(f"where_clause[{i}] = {c} with \"=\" operator: selectivity = low (0)") # FOR DEBUG ONLY
+            selectivity_clause[c] = 0
+            print(f"selectivity of clause {c} is low {selectivity_clause[c]}") # FOR DEBUG ONLY
+        # comparison operators with greater selectivity
+        else:
+            print(f"where_clause[{i}] = {c} with comparison operator: selectivity = high (1)") # FOR DEBUG ONLY
+            selectivity_clause[c] = 1
+            print(f"selectivity of clause {c} is high {selectivity_clause[c]}") # FOR DEBUG ONLY
+        
