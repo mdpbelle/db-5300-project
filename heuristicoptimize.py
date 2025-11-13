@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     # parse each statement
     for i, statement in enumerate(statements, 1):
-        if statement[0:1] == "--":
+        if statement[0] == "-" and statement[1] == "-":
             print(f"Comment: {statement}")
     # discard lines that start with two dashes '--' (comments)
      
