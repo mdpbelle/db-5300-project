@@ -1,0 +1,24 @@
+-- Schema Definitions --
+Employee(
+  Fname, Minit, Lname, Ssn, Bdate, Address, Sex, Salary, Super_ssn, Dno,
+  PRIMARY KEY(Ssn)
+);
+
+Project(
+  Pname, Pnumber, Plocation, Dnum,
+  PRIMARY KEY(Pnumber),
+  UNIQUE(Pname)
+);
+
+Works_On(
+  Essn, Pno, Hours,
+  PRIMARY KEY(Essn, Pno)
+); 
+
+-- SQL Query --
+SELECT E.Lname
+FROM EMPLOYEE E, WORKS_ON W, PROJECT P
+WHERE P.Pname=‘Aquarius’ AND
+      P.Pnumber=W.Pno AND
+      E.Essn=W.Ssn AND
+      E.Bdate>’1957-12-31’;
