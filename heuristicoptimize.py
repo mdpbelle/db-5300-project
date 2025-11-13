@@ -6,10 +6,8 @@ def parse_sql_txt(file_path):
             sql_txt = f.read()
         
         # Split the content by the semicolon delimiter and strip each statement
-        statements = [s.strip() for s in sql_content.split(';') if s.strip()]
+        statements = [s.strip() for s in sql_txt.split('\n') if s.strip()]
 
-        # return 
-        return statements
         
         # strip statements to clean
         print(f"--- Parsing SQL from: {file_path} ---") # FOR DEBUG ONLY
@@ -27,6 +25,9 @@ def parse_sql_txt(file_path):
         print(f"Error: The file '{file_path}' was not found.")
     except Exception as e:
         print(f"An error occurred: {e}")
+        
+    # return 
+    return statements
 
 # main driver function
 if __name__ == "__main__":
