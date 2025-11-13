@@ -18,7 +18,7 @@ def parse_sql_txt(file_path):
             if clean_statement:
                 # FOR DEBUG ONLY
                 print(f"--- Statement {i} ---") 
-                print(clean_statement + ";") # Add semicolon back for readability
+                print(clean_statement)
                 print("-" * 20)
 
     except FileNotFoundError:
