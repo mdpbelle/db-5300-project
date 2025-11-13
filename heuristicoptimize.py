@@ -17,9 +17,11 @@ def parse_sql_txt(file_path):
             # Skip empty statements
             if clean_statement:
                 # FOR DEBUG ONLY
+                '''
                 print(f"--- Statement {i} ---") 
                 print(clean_statement)
                 print("-" * 20)
+                '''
 
     except FileNotFoundError:
         print(f"Error: The file '{file_path}' was not found.")
@@ -34,10 +36,17 @@ if __name__ == "__main__":
     # set input file
     input_file = "input.txt"
     non_comment_lines = 0
+    # list to hold non-comment lines
+    statements = []
+    # list to hold select statements
+    select_statements = []
+    # list to hold where clauses
+    where_clauses = []
+    # list to hold from clauses aka relevant tables
+    tables = []
 
     # parse input file into each line
     all_statements = parse_sql_txt(input_file)
-    statements = []
 
     # parse each statement
     for i, statement in enumerate(all_statements, 1):
@@ -47,7 +56,24 @@ if __name__ == "__main__":
         else: # add non-comment lines to new list
             statements.append(statement)
             non_comment_lines = non_comment_lines+1
-            print(f"Line {non_comment_lines}: {statement}") # FOR DEBUG ONLY
-    # filter select clauses
-    # filter project clauses
+            # print(f"Line {non_comment_lines}: {statement}") # FOR DEBUG ONLY
+    for i, statement in enumerate(statements, 1):
+    # filter select statements (PROJECT clauses)
+        if statement[0] == "S" and statement[1] == "E" and statement[2] == "L":
+            s = statement[7:].split(", ")
+            for i in s:
+                select_statements.append(s)
+            print(f"Project clauses: {s}")
+    # filter select (WHERE) clauses
+        if statement[0] == "W" and statement[1] == "H" and statement[2] == "E" and statement[3] == "R" and statement[4] == "E":
+            where_clauses.append(statement[6:-3])
+            for k in range(i+1, len(statements)-1):
+                s = statements[k]
+                if ">" in s or "<" in s or "=" in s:
+                    if "AND" in s:
+                        where_clauses.append(s[:-3])
+                    else:
+                        where_clauses.append(s)
+            for j, c in enumerate(where_clauses, 1):
+                print(f"Where clause: {c}")
     # filter cartesian products
