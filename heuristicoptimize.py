@@ -34,7 +34,7 @@ if __name__ == "__main__":
     input_file = "input.txt"
 
     # parse input file into each line
-    statements = parse_simple_sql_file(input_file)
+    statements = parse_sql_txt(input_file)
 
     # parse each statement
     for i, statement in enumerate(statements, 1):
