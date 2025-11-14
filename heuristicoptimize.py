@@ -138,6 +138,10 @@ if __name__ == "__main__":
     print()
     
     # print second join condition (if there is a third table to join)
+    if len(tables) >= 3:
+        for i in range(3, len(join_clauses[0])):
+            print(" ", end="")
+        print(f"X({join_clauses[1]})")
     
     # print lines to next join condition
     starting_spaces = len(join_clauses[0])-1
@@ -183,10 +187,10 @@ if __name__ == "__main__":
     
     # print each table letter with a two space gap on either side
     # print first two tables first
-    print(f"  {tables[0]}  ", end="")
-    print(f"  {tables[1]}  ", end="")
+    print(f"  {join_tables[0]}  ", end="")
+    print(f"  {join_tables[1]}  ", end="")
     # print the other tables
     for j in range(2, len(join_clauses[0])):
         print(" ", end="")
-    for i in range(2, len(tables)):
-        print(f" {tables[i]} ", end="")
+    for i in range(2, len(join_tables)):
+        print(f" {join_tables[i]} ", end="")
