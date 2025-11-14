@@ -63,6 +63,9 @@ if __name__ == "__main__":
             pass
         # add non-comment lines to new list
         else:
+            # remove semi-colon
+            if ";" in statement:
+                statement = statement[0:-1]
             statements.append(statement)
             non_comment_lines = non_comment_lines+1
             print(f"Line {non_comment_lines}: {statement}") # FOR DEBUG ONLY
@@ -73,7 +76,7 @@ if __name__ == "__main__":
         if statement[0] == "S" and statement[1] == "E" and statement[2] == "L":
             s = statement[7:].split(", ")
             for i in s:
-                project_clauses.append(s)
+                project_clauses.append(i)
             # print(f"Project clauses: {s}") # FOR DEBUG ONLY
         # filter where_clauses (SELECT clauses)
         if statement[0] == "W" and statement[1] == "H" and statement[2] == "E" and statement[3] == "R" and statement[4] == "E":
@@ -130,23 +133,54 @@ if __name__ == "__main__":
             select_clauses.append(c)
             # print(f"select_clause: {c}") # FOR DEBUG ONLY
             
-    # print canonical tree given project_clauses, where_clauses, tables
-    print("Printing canonical query tree from given SQL txt:")
+    print(f"Project clauses: {project_clauses} ({len(project_clauses)})")
     print(f"Select clauses: {select_clauses} ({len(select_clauses)})")
     print(f"Join clauses: {join_clauses} ({len(join_clauses)})") # FOR DEBUG ONLY
-    print(f"Join tables: {join_tables} ({len(join_tables)})") # FOR DEBUG ONLY
+    print(f"Tables: {join_tables} ({len(join_tables)})") # FOR DEBUG ONLY
     print()
+    
+    # print canonical tree given project_clauses, where_clauses, tables
+    print("Printing canonical query tree from given SQL txt:")
+    print()
+    
+    # print project conditions
+    print("Project(", end="")
+    for i, c in enumerate(project_clauses, 1):
+        if i != len(project_clauses):
+            print(f"{project_clauses[i-1]} AND ", end="")
+        else:
+            print(f"{project_clauses[i-1]}", end="")
+    print(")")
+    
+    # print vertical line from select to project
+    for i in range(0,1):
+        for j in range(0, len(tables)+1):
+            print(" ", end="")
+        print("|")
+    
+    # print select conditions (all where clauses)
+    print("Select(", end="")
+    for i, c in enumerate(where_clauses, 1):
+        if i != len(where_clauses):
+            print(f"{c} AND ", end="")
+        else:
+            print(f"{c}", end="")
+    print(")")
+    
+    # print vertical line from final join to select
+    for j in range(0, 1):
+        for i in range(0, len(tables)+1):
+            print(" ", end="")
+        print("|")
     
     # print second join condition (if there is a third table to join)
     if len(tables) >= 3:
-        for i in range(3, len(join_clauses[0])):
-            print(" ", end="")
-        print(f"X({join_clauses[1]})")
+        print(f"    X")
     
     # print lines to next join condition
-    starting_spaces = len(join_clauses[0])-1
+    starting_spaces = 4
     between_spaces = 0
-    while between_spaces < len(join_clauses[0])-1:
+    while between_spaces < len(tables):
         # print starting spaces on same line
         starting_spaces = starting_spaces-1
         for i in range(0, starting_spaces):
@@ -163,34 +197,28 @@ if __name__ == "__main__":
     # print first join condition
     for i, t in enumerate(join_tables):
         if i < len(join_clauses)/2:
-            print(f"   X({join_clauses[0]})", end="")
+            print(f"  X   ", end="")
         if i == len(join_tables)-1:
             print("\\")
     
     # print connecting lines for next level with first join
     for i, t in enumerate(join_tables):
         if i < len(join_clauses)/2:
-            print("    /\\     ", end="")
+            print("  /\\   ", end="")
         if i == len(join_clauses)-1:
-            for j in range(4, len(join_clauses[0])):
-                print(" ", end="")
             print("\\")
     
     # print connecting lines for bottom level
     for i, t in enumerate(tables):
         if i < len(tables)-2:
-            print("   /  \   ", end="")
-        if i == len(tables)-1:
-            for j in range(2, len(join_clauses[0])):
-                print(" ", end="")
+            print(" /  \   ", end="")
             print("\\")
     
     # print each table letter with a two space gap on either side
     # print first two tables first
-    print(f"  {join_tables[0]}  ", end="")
+    print(f"{join_tables[0]}  ", end="")
     print(f"  {join_tables[1]}  ", end="")
     # print the other tables
-    for j in range(2, len(join_clauses[0])):
-        print(" ", end="")
     for i in range(2, len(join_tables)):
         print(f" {join_tables[i]} ", end="")
+        
