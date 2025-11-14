@@ -82,7 +82,7 @@ if __name__ == "__main__":
                 s = statements[k]
                 if ">" in s or "<" in s or "=" in s:
                     if "AND" in s:
-                        where_clauses.append(s[:-3])
+                        where_clauses.append(s[:-4])
                     else:
                         where_clauses.append(s)
             # for j, c in enumerate(where_clauses, 1):
@@ -139,37 +139,54 @@ if __name__ == "__main__":
     
     # print second join condition (if there is a third table to join)
     
+    # print lines to next join condition
+    starting_spaces = len(join_clauses[0])-1
+    between_spaces = 0
+    while between_spaces < len(join_clauses[0])-1:
+        # print starting spaces on same line
+        starting_spaces = starting_spaces-1
+        for i in range(0, starting_spaces):
+            print(" ", end="")
+        # print right slash on same line
+        print("/", end="")
+        # print between spaces on same line
+        for i in range(0, between_spaces):
+            print(" ", end="")
+        # print left slash on same line
+        print("\\")
+        between_spaces = between_spaces+2
+    
     # print first join condition
     for i, t in enumerate(join_tables):
         if i < len(join_clauses)/2:
-            print(f"   X({join_clauses[0]})  ", end="")
+            print(f"   X({join_clauses[0]})", end="")
         if i == len(join_tables)-1:
-            print("  \\")
+            print("\\")
     
     # print connecting lines for next level with first join
     for i, t in enumerate(join_tables):
         if i < len(join_clauses)/2:
-            print("    /\\    ", end="")
+            print("    /\\     ", end="")
         if i == len(join_clauses)-1:
-            for j in range(0, len(join_clauses[0])):
+            for j in range(4, len(join_clauses[0])):
                 print(" ", end="")
-            print(" \\")
+            print("\\")
     
     # print connecting lines for bottom level
     for i, t in enumerate(tables):
         if i < len(tables)-2:
             print("   /  \   ", end="")
         if i == len(tables)-1:
-            for j in range(0, len(join_clauses[0])):
+            for j in range(2, len(join_clauses[0])):
                 print(" ", end="")
-            print("  \\")
+            print("\\")
     
     # print each table letter with a two space gap on either side
     # print first two tables first
     print(f"  {tables[0]}  ", end="")
     print(f"  {tables[1]}  ", end="")
     # print the other tables
-    for j in range(0, len(join_clauses[0])):
+    for j in range(2, len(join_clauses[0])):
         print(" ", end="")
     for i in range(2, len(tables)):
-        print(f"   {tables[i]}   ", end="")
+        print(f" {tables[i]} ", end="")
