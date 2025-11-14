@@ -65,7 +65,7 @@ if __name__ == "__main__":
         else:
             statements.append(statement)
             non_comment_lines = non_comment_lines+1
-            # print(f"Line {non_comment_lines}: {statement}") # FOR DEBUG ONLY
+            print(f"Line {non_comment_lines}: {statement}") # FOR DEBUG ONLY
     
     # parses/sorts/filters each statement from statements to each clause list
     for i, statement in enumerate(statements, 1):
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         # filter where_clauses (SELECT clauses)
         if statement[0] == "W" and statement[1] == "H" and statement[2] == "E" and statement[3] == "R" and statement[4] == "E":
             where_clauses.append(statement[6:-3])
-            for k in range(i+1, len(statements)-1):
+            for k in range(i, len(statements)-1):
                 s = statements[k]
                 if ">" in s or "<" in s or "=" in s:
                     if "AND" in s:
@@ -105,31 +105,39 @@ if __name__ == "__main__":
             # check if foreign key comparison (for join clause)
             arguments = c.split("=")
             # print(f"arguments: {arguments}") # FOR DEBUG ONLY
+            
             if "." in arguments[0] and "." in arguments[1]:
                 # print(f"foreign key join clause detected: {c}") # FOR DEBUG ONLY
                 join_clauses.append(c)
                 argument1 = arguments[0]
                 argument2 = arguments[1]
-                join_tables.append(argument1[0:1])
-                join_tables.append(argument2[0:1])
-                print(f"join_clauses: {join_tables}") # FOR DEBUG ONLY
+                join_table1 = argument1[0:1]
+                join_table2 = argument2[0:1]
+                # check for duplicates before adding tables
+                if join_table1 not in join_tables:
+                    join_tables.append(join_table1)
+                if join_table2 not in join_tables:
+                    join_tables.append(join_table2)
+                # print(f"join_clauses: {join_tables}") # FOR DEBUG ONLY
             else:
                 select_clauses.append(c)
-                print(f"select_clause: {c}") # FOR DEBUG ONLY
+                # print(f"select_clause: {c}") # FOR DEBUG ONLY
         # comparison operators with greater selectivity
         else:
             # print(f"where_clause[{i}] = {c} with comparison operator: selectivity = high (1)") # FOR DEBUG ONLY
             selectivity_clause[c] = 1
             # print(f"selectivity of clause {c} is high {selectivity_clause[c]}") # FOR DEBUG ONLY
             select_clauses.append(c)
-            print(f"select_clause: {c}") # FOR DEBUG ONLY
+            # print(f"select_clause: {c}") # FOR DEBUG ONLY
             
     # print canonical tree given project_clauses, where_clauses, tables
     print("Printing canonical query tree from given SQL txt:")
     print(f"Select clauses: {select_clauses} ({len(select_clauses)})")
     print(f"Join clauses: {join_clauses} ({len(join_clauses)})") # FOR DEBUG ONLY
     print(f"Join tables: {join_tables} ({len(join_tables)})") # FOR DEBUG ONLY
+    print()
     
+    # print second join condition (if there is a third table to join)
     
     # print first join condition
     for i, t in enumerate(join_tables):
@@ -157,12 +165,11 @@ if __name__ == "__main__":
             print("  \\")
     
     # print each table letter with a two space gap on either side
-    # print join tables first
-    for i, t in enumerate(join_tables):
-        print(f"  {t}  ", end="")
+    # print first two tables first
+    print(f"  {tables[0]}  ", end="")
+    print(f"  {tables[1]}  ", end="")
     # print the other tables
-    for i, t in enumerate(tables): 
-        if t not in join_tables:
-            for j in range(0, len(join_clauses[0])):
-                print(" ", end="")
-            print(f"  {t}  ", end="")
+    for j in range(0, len(join_clauses[0])):
+        print(" ", end="")
+    for i in range(2, len(tables)):
+        print(f"   {tables[i]}   ", end="")
