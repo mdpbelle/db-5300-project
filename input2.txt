@@ -1,0 +1,16 @@
+SELECT
+  * 
+FROM 
+  Project P 
+  INNER JOIN Works_On W ON P.Pnumber = W.Pno 
+  INNER JOIN Employee E ON E.Ssn = W.Essn
+WHERE 
+  E.Sex = 'M'
+  AND P.Plocation != 'Houston'
+  OR W.Hours > 5
+GROUP BY 
+  P.Pnumber
+HAVING 
+  COUNT(*) >= 3      
+ORDER BY
+  P.Pname ASC;

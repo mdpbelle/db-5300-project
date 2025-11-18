@@ -1,0 +1,16 @@
+SELECT
+  E.Dno, 
+  COUNT(*), 
+  MIN(E.Salary), 
+  MAX(E.Salary), 
+  AVG(E.Salary), 
+  SUM(W.Hours), 
+  AVG(W.Hours) 
+FROM 
+  Employee E 
+  LEFT OUTER JOIN Works_On W ON E.Ssn = W.Essn
+GROUP BY 
+  E.Dno 
+HAVING 
+  AVG(E.Salary) >= 60000 AND 
+  AVG(E.Salary) <= 90000;
