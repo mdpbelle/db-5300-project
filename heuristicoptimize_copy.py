@@ -27,36 +27,22 @@ def parse_sql_txt(file_path):
         where_clause = re.search(r"WHERE\s+(.*?)\s+(GROUP BY|;)", sql_txt_remove_line, re.IGNORECASE)
         if where_clause:
             print(f"Where Clause: {where_clause.group(1)}") #testing
+            parse_where(where_clause.group(1))
         group_by_clause = re.search(r"GROUP BY\s+(.*?)\s+(HAVING|;)", sql_txt_remove_line, re.IGNORECASE)
         if group_by_clause:
             print(f"Group By Clause: {group_by_clause.group(1)}") #testing
+            parse_group_by(group_by_clause.group(1))
         having_clause = re.search(r"HAVING\s+(.*?)\s+(ORDER BY|;)", sql_txt_remove_line, re.IGNORECASE)
         if having_clause:
             print(f"Having Clause: {having_clause.group(1)}") #testing
+            parse_having(having_clause.group(1))
         order_by_clause = re.search(r"ORDER BY\s+(.*?);", sql_txt_remove_line, re.IGNORECASE)
         if order_by_clause:
             print(f"Order By Clause: {order_by_clause.group(1)}") #testing
+            parse_order_by(order_by_clause.group(1))
 
 
-        statements = [s.strip() for s in sql_txt.split('\n') if s.strip()]
-
-        for statement in statements:
-            print(statement)
         
-        
-        # strip statements to clean
-        print(f"--- Parsing SQL from: {file_path} ---") # FOR DEBUG ONLY
-        for i, statement in enumerate(statements, 1):
-            clean_statement = statement.strip()
-            
-            # Skip empty statements
-            if clean_statement:
-                # FOR DEBUG ONLY
-                '''
-                print(f"--- Statement {i} ---") 
-                print(clean_statement)
-                print("-" * 20)
-                '''
 
     except FileNotFoundError:
         print(f"Error: The file '{file_path}' was not found.")
@@ -64,7 +50,7 @@ def parse_sql_txt(file_path):
         print(f"An error occurred: {e}")
         
     # return 
-    return statements
+    return
 
 def parse_select(statement):
     # extract project clauses from SELECT statement
@@ -200,183 +186,130 @@ def parse_from(statement):
     return from_clause
 
 def parse_where(statement):
-    # extract where clause from WHERE statement
-    where_clause = statement[6:]
-    where_clauses.append(where_clause)
-    return where_clause
+    # Parse the WHERE clause into structured predicates.
+    # Supports AND/OR, parentheses, and comparison operators.
+
+    if not statement or not statement.strip():
+        return []
+
+    s = statement.strip()
+
+    operators = [
+        r">=", r"<=", r"<>", r"!=", r"=", r">", r"<",
+        r"LIKE", r"IN", r"BETWEEN", r"IS NOT", r"IS"
+    ]
+    operator_regex = "|".join(operators)
+
+    token_regex = re.compile(
+        rf"""
+        (\()                    |   # "("
+        (\))                    |   # ")"
+        \b(AND|OR)\b            |   # logical operators
+
+        (\S+)\s*                # left operand (ANYTHING except whitespace)
+
+        ({operator_regex})      # operator
+
+        \s*
+
+        (\S+)                   # right operand (ANYTHING except whitespace)
+        """,
+        re.IGNORECASE | re.VERBOSE
+    )
+
+    tokens = []
+    idx = 0
+
+    while idx < len(s):
+        m = token_regex.match(s, idx)
+        if not m:
+            if s[idx].isspace():
+                idx += 1
+                continue
+            raise ValueError(f"Unrecognized token in WHERE/HAVING clause at: {s[idx:]}")
+
+        g = m.groups()
+
+        if g[0]:
+            tokens.append("(")
+        elif g[1]:
+            tokens.append(")")
+        elif g[2]:
+            tokens.append(g[2].upper())
+        else:
+            tokens.append({
+                "left": g[3],
+                "operator": g[4].upper(),
+                "right": g[5]
+            })
+
+        idx = m.end()
+
+    print("WHERE Parsed Tokens:", tokens)
+    return tokens
+
+
+def parse_group_by(statement):
+    # Parses the GROUP BY clause.
+    # Returns a list of grouping expressions.
+    # Example: ["A.dept", "A.role", "DATE(A.hire_date)"]
+
+    if not statement or not statement.strip():
+        return []
+
+    # Split by commas, preserve expressions
+    groups = [g.strip() for g in statement.split(",")]
+
+    print("GROUP BY Parsed:", groups)
+    return groups
+
+def parse_having(statement):
+    # Parses the HAVING clause into structured predicate tokens.
+    # Reuses the same logic as parse_where.
+    
+    if not statement or not statement.strip():
+        return []
+
+    print("Parsing HAVING:", statement)
+    return parse_where(statement)
+
+def parse_order_by(statement):
+    # Parse ORDER BY clause.
+    # Returns list of dicts:
+    #     { "expr": <expression>, "direction": "ASC"/"DESC" }
+    
+    if not statement or not statement.strip():
+        return []
+
+    # Split on commas at top level
+    parts = [p.strip() for p in statement.split(",")]
+
+    results = []
+    for part in parts:
+        # Detect ASC/DESC (default ASC)
+        m = re.match(r"(.+?)\s+(ASC|DESC)$", part, re.IGNORECASE)
+        if m:
+            expr = m.group(1).strip()
+            direction = m.group(2).upper()
+        else:
+            expr = part
+            direction = "ASC"  # SQL default
+
+        results.append({
+            "expr": expr,
+            "direction": direction
+        })
+
+    print("ORDER BY Parsed:", results)
+    return results
+
+
+
+
 
 # main driver function
 if __name__ == "__main__":
     # set input file
-    input_file = "input3.txt"
-    non_comment_lines = 0
-    # list to hold non-comment lines
-    statements = []
-    # list to hold project clauses from select statements
-    project_clauses = []
-    # list to hold where clauses
-    where_clauses = []
-    # list to hold from clauses aka relevant tables
-    tables = []
-    selectivity_clause = {} # dict for holding clause:selectivity pairs (where selectivity of 0 is low and 1 is high)
-    # list for join clauses (foreign keys)
-    join_clauses = []
-    # list for select clauses
-    select_clauses = []
-    # list to store tables pairs that are joined
-    join_tables = []
-
-    # parse input file into each line
+    input_file = "input2.txt"
+    
     all_statements = parse_sql_txt(input_file)
-
-    # parse each statement from all_statements to statements, removing comments
-    for i, statement in enumerate(all_statements, 1):
-        # discard lines that start with two dashes '--' (comments)
-        if statement[0] == "-" and statement[1] == "-":
-            # print(f"Comment: {statement}") # FOR DEBUG ONLY
-            pass
-        # add non-comment lines to new list
-        else:
-            # remove semi-colon
-            if ";" in statement:
-                statement = statement[0:-1]
-            statements.append(statement)
-            non_comment_lines = non_comment_lines+1
-            print(f"Line {non_comment_lines}: {statement}") # FOR DEBUG ONLY
-    
-    # parses/sorts/filters each statement from statements to each clause list
-    for i, statement in enumerate(statements, 1):
-        # filter project_clauses (PROJECT clauses)
-        print(statement)
-        if statement[0:6] == "SELECT":
-            parse_select(statement)
-        elif statement[0:5] == "WHERE":
-            parse_where(statement)
-        elif statement[0:4] == "FROM":
-            parse_from(statement)
-    
-    # parses each WHERE clause to a join condition and selectivity
-    for i, c in enumerate(where_clauses, 1):
-        # prioritize equality for selectivity
-        if "=" in c:
-            # print(f"where_clause[{i}] = {c} with \"=\" operator: selectivity = low (0)") # FOR DEBUG ONLY
-            selectivity_clause[c] = 0
-            # print(f"selectivity of clause {c} is low {selectivity_clause[c]}") # FOR DEBUG ONLY
-            
-            # check if foreign key comparison (for join clause)
-            arguments = c.split("=")
-            # print(f"arguments: {arguments}") # FOR DEBUG ONLY
-            
-            if "." in arguments[0] and "." in arguments[1]:
-                # print(f"foreign key join clause detected: {c}") # FOR DEBUG ONLY
-                join_clauses.append(c)
-                argument1 = arguments[0]
-                argument2 = arguments[1]
-                join_table1 = argument1[0:1]
-                join_table2 = argument2[0:1]
-                # check for duplicates before adding tables
-                if join_table1 not in join_tables:
-                    join_tables.append(join_table1)
-                if join_table2 not in join_tables:
-                    join_tables.append(join_table2)
-                # print(f"join_clauses: {join_tables}") # FOR DEBUG ONLY
-            else:
-                select_clauses.append(c)
-                # print(f"select_clause: {c}") # FOR DEBUG ONLY
-        # comparison operators with greater selectivity
-        else:
-            # print(f"where_clause[{i}] = {c} with comparison operator: selectivity = high (1)") # FOR DEBUG ONLY
-            selectivity_clause[c] = 1
-            # print(f"selectivity of clause {c} is high {selectivity_clause[c]}") # FOR DEBUG ONLY
-            select_clauses.append(c)
-            # print(f"select_clause: {c}") # FOR DEBUG ONLY
-            
-    print(f"Project clauses: {project_clauses} ({len(project_clauses)})")
-    print(f"Select clauses: {select_clauses} ({len(select_clauses)})")
-    print(f"Join clauses: {join_clauses} ({len(join_clauses)})") # FOR DEBUG ONLY
-    print(f"Tables: {join_tables} ({len(join_tables)})") # FOR DEBUG ONLY
-    print()
-    
-    # print canonical tree given project_clauses, where_clauses, tables
-    print("Printing canonical query tree from given SQL txt:")
-    print()
-    
-    # print project conditions
-    print("Project(", end="")
-    for i, c in enumerate(project_clauses, 1):
-        if i != len(project_clauses):
-            print(f"{project_clauses[i-1]} AND ", end="")
-        else:
-            print(f"{project_clauses[i-1]}", end="")
-    print(")")
-    
-    # print vertical line from select to project
-    for i in range(0,1):
-        for j in range(0, len(tables)+1):
-            print(" ", end="")
-        print("|")
-    
-    # print select conditions (all where clauses)
-    print("Select(", end="")
-    for i, c in enumerate(where_clauses, 1):
-        if i != len(where_clauses):
-            print(f"{c} AND ", end="")
-        else:
-            print(f"{c}", end="")
-    print(")")
-    
-    # print vertical line from final join to select
-    for j in range(0, 1):
-        for i in range(0, len(tables)+1):
-            print(" ", end="")
-        print("|")
-    
-    # print second join condition (if there is a third table to join)
-    if len(tables) >= 3:
-        print(f"    X")
-    
-    # print lines to next join condition
-    starting_spaces = 4
-    between_spaces = 0
-    while between_spaces < len(tables):
-        # print starting spaces on same line
-        starting_spaces = starting_spaces-1
-        for i in range(0, starting_spaces):
-            print(" ", end="")
-        # print right slash on same line
-        print("/", end="")
-        # print between spaces on same line
-        for i in range(0, between_spaces):
-            print(" ", end="")
-        # print left slash on same line
-        print("\\")
-        between_spaces = between_spaces+2
-    
-    # print first join condition
-    for i, t in enumerate(join_tables):
-        if i < len(join_clauses)/2:
-            print(f"  X   ", end="")
-        if i == len(join_tables)-1:
-            print("\\")
-    
-    # print connecting lines for next level with first join
-    for i, t in enumerate(join_tables):
-        if i < len(join_clauses)/2:
-            print("  /\\   ", end="")
-        if i == len(join_clauses)-1:
-            print("\\")
-    
-    # print connecting lines for bottom level
-    for i, t in enumerate(tables):
-        if i < len(tables)-2:
-            print(" /  \   ", end="")
-            print("\\")
-    
-    # print each table letter with a two space gap on either side
-    # print first two tables first
-    #print(f"{join_tables[0]}  ", end="")
-    #print(f"  {join_tables[1]}  ", end="")
-    # print the other tables
-    for i in range(2, len(join_tables)):
-        print(f" {join_tables[i]} ", end="")
-        
