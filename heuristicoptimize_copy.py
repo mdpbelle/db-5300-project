@@ -1,4 +1,5 @@
 import re
+from graphviz import Digraph
 
 AGGREGATE_FUNCTIONS = {'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'}
 JOINS = {'INNER JOIN', 'LEFT OUTER JOIN', 'RIGHT OUTER JOIN', 'FULL OUTER JOIN', 'JOIN'}
@@ -20,27 +21,39 @@ def parse_sql_txt(file_path):
         # then passes that to the respective parser function
         select_clause = re.search(r"SELECT\s+(.*?)\s+FROM", sql_txt_remove_line, re.IGNORECASE)
         print(f"Select Clause: {select_clause.group(1)}") #testing
-        parse_select(select_clause.group(1))
+        select_parsed = parse_select(select_clause.group(1))
         from_clause = re.search(r"FROM\s+(.*?)(?=\s+WHERE|\s+GROUP BY|\s+HAVING|\s+ORDER BY|\s*;|$)", sql_txt_remove_line, re.IGNORECASE)
         print(f"From Clause: {from_clause.group(1)}") #testing
-        parse_from(from_clause.group(1))
+        from_parsed = parse_from(from_clause.group(1))
         where_clause = re.search(r"WHERE\s+(.*?)\s+(GROUP BY|;)", sql_txt_remove_line, re.IGNORECASE)
+        where_parsed = None
         if where_clause:
             print(f"Where Clause: {where_clause.group(1)}") #testing
-            parse_where(where_clause.group(1))
+            where_parsed = parse_where(where_clause.group(1))
         group_by_clause = re.search(r"GROUP BY\s+(.*?)\s+(HAVING|;)", sql_txt_remove_line, re.IGNORECASE)
+        group_by_parsed = None
         if group_by_clause:
             print(f"Group By Clause: {group_by_clause.group(1)}") #testing
-            parse_group_by(group_by_clause.group(1))
+            group_by_parsed = parse_group_by(group_by_clause.group(1))
         having_clause = re.search(r"HAVING\s+(.*?)\s+(ORDER BY|;)", sql_txt_remove_line, re.IGNORECASE)
+        having_parsed = None
         if having_clause:
             print(f"Having Clause: {having_clause.group(1)}") #testing
-            parse_having(having_clause.group(1))
+            having_parsed = parse_having(having_clause.group(1))
         order_by_clause = re.search(r"ORDER BY\s+(.*?);", sql_txt_remove_line, re.IGNORECASE)
+        order_by_parsed = None
         if order_by_clause:
             print(f"Order By Clause: {order_by_clause.group(1)}") #testing
-            parse_order_by(order_by_clause.group(1))
+            order_by_parsed = parse_order_by(order_by_clause.group(1))
 
+        return {
+            "select": select_parsed, 
+            "from": from_parsed, 
+            "where": where_parsed, 
+            "group by": group_by_parsed, 
+            "having": having_parsed, 
+            "order by": order_by_parsed
+        }
 
         
 
@@ -304,12 +317,127 @@ def parse_order_by(statement):
     return results
 
 
+################ TREE PRINTING
+def build_query_tree(parsed_sql):
+    # 1. Create TABLE nodes for all tables
+    tables = parsed_sql.get("from", {}).get("tables", {})
+    table_nodes = {alias: QueryNode("TABLE", {"name": name}) for alias, name in tables.items()}
 
+    # 2. Build JOIN nodes if any joins present
+    joins = parsed_sql.get("from", {}).get("joins", [])
+    if not joins:
+        # No joins, just one table node or cartesian product
+        if len(table_nodes) == 1:
+            root = next(iter(table_nodes.values()))
+        else:
+            # Simple cartesian product JOIN all tables left to right
+            table_list = list(table_nodes.values())
+            root = table_list[0]
+            for tnode in table_list[1:]:
+                root = QueryNode("JOIN", {"condition": None, "type": "CROSS JOIN"}, [root, tnode])
+    else:
+        # Build join tree left to right based on join info
+        # Start with the left table of first join
+        first_join = joins[0]
+        left_alias = first_join["left_table"]
+        right_alias = first_join["right_table"]
+        left_node = table_nodes[left_alias]
+        right_node = table_nodes[right_alias]
+        root = QueryNode("JOIN", {
+            "condition": first_join["condition"],
+            "type": first_join["type"]
+        }, [left_node, right_node])
 
+        # For subsequent joins, attach as right child
+        for join in joins[1:]:
+            right_alias = join["right_table"]
+            right_node = table_nodes[right_alias]
+            root = QueryNode("JOIN", {
+                "condition": join["condition"],
+                "type": join["type"]
+            }, [root, right_node])
+
+    # 3. Wrap WHERE clause as SELECT node if any condition
+    where_tokens = parsed_sql.get("where", [])
+    if where_tokens:
+        cond_str = tokens_to_condition(where_tokens)
+        root = QueryNode("SELECT", {"condition": cond_str}, [root])
+
+    # 4. Wrap PROJECT node for SELECT projections
+    select_proj = parsed_sql.get("select", {})
+    proj_list = []
+    for alias, attrs in select_proj.items():
+        for attr in attrs:
+            if alias == "*":
+                proj_list.append(attr)
+            else:
+                proj_list.append(f"{alias}.{attr}")
+
+    root = QueryNode("PROJECT", {"projections": proj_list}, [root])
+
+    return root
+
+def tokens_to_condition(tokens):
+    result = []
+    for token in tokens:
+        if isinstance(token, str):
+            result.append(token)
+        else:
+            # token is dict: {"left": ..., "operator": ..., "right": ...}
+            result.append(f"{token['left']} {token['operator']} {token['right']}")
+    return " ".join(result)
+
+def print_query_tree(node, indent=0):
+    print("  " * indent + f"{node.node_type}: {node.details}")
+    for child in node.children:
+        print_query_tree(child, indent + 1)
+
+class QueryNode:
+    def __init__(self, node_type, details=None, children=None):
+        self.node_type = node_type              # e.g., "TABLE", "JOIN", "SELECT", "PROJECT"
+        self.details = details or {}            # dictionary of node-specific info
+        self.children = children or []          # list of child QueryNodes
+
+    def __repr__(self):
+        return f"{self.node_type}({self.details})"
+    
+
+def build_graph(node, graph=None, parent=None):
+    if graph is None:
+        graph = Digraph(comment="Query Plan")
+    
+    # Give each node a unique ID
+    node_id = str(id(node))
+    
+    # Label the node
+    if node.node_type == "PROJECT":
+        label = f"PROJECT\n{', '.join(node.details.get('projections', []))}"
+    elif node.node_type == "SELECT":
+        label = f"SELECT\n{node.details.get('condition','')}"
+    elif node.node_type == "JOIN":
+        label = f"{node.details.get('type','JOIN')}\n{node.details.get('condition','')}"
+    else:
+        label = f"{node.node_type}\n{node.details.get('name','')}"
+    
+    graph.node(node_id, label)
+    
+    if parent:
+        graph.edge(parent, node_id)
+    
+    for child in node.children:
+        build_graph(child, graph, node_id)
+    
+    return graph
 
 # main driver function
 if __name__ == "__main__":
-    # set input file
-    input_file = "input2.txt"
-    
-    all_statements = parse_sql_txt(input_file)
+    input_file = "input3.txt"
+    parsed_sql = parse_sql_txt(input_file)
+    if parsed_sql:
+        query_tree = build_query_tree(parsed_sql)
+        
+        # Build Graphviz graph
+        initial_graph = build_graph(query_tree)
+        
+        # Render as PDF or PNG
+        initial_graph.render("query_plan_tree", view=True, format="png")
