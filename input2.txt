@@ -7,6 +7,7 @@ FROM
 WHERE 
   E.Sex = 'M'
   AND P.Plocation != 'Houston'
+  AND P.abc = 'jkl'
   OR W.Hours > 5
 GROUP BY 
   P.Pnumber
