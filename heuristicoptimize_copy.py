@@ -323,6 +323,7 @@ def build_query_tree(parsed_sql):
     tables = parsed_sql.get("from", {}).get("tables", {})
     table_nodes = {alias: QueryNode("TABLE", {"name": name}) for alias, name in tables.items()}
 
+
     # 2. Build JOIN nodes if any joins present
     joins = parsed_sql.get("from", {}).get("joins", [])
     if not joins:
@@ -357,23 +358,42 @@ def build_query_tree(parsed_sql):
                 "type": join["type"]
             }, [root, right_node])
 
+
     # 3. Wrap WHERE clause as SELECT node if any condition
     where_tokens = parsed_sql.get("where", [])
     if where_tokens:
         cond_str = tokens_to_condition(where_tokens)
         root = QueryNode("SELECT", {"condition": cond_str}, [root])
 
+
     # 4. Group by clause 
     # get group_by_clause from parsed_sql
     group_by = parsed_sql.get("group by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    group_clause_together = ""
+    for token in group_by:
+        group_clause_together+=token
+        group_clause_together+=" "
     if group_by:
-        root = QueryNode("GROUP BY", group_by, [root])
+        root = QueryNode("GROUP BY", group_clause_together, [root])   #currently only works if theres only one argument
+
 
     # 5. Having clause
     # get having_clause from parsed_sql
     having = parsed_sql.get("having", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    having_clause_together = ""
+    for token in having:
+        having_clause_together+=token['left']
+        having_clause_together+=" "
+        having_clause_together+=token['operator']
+        having_clause_together+=" "
+        having_clause_together+=token['right']
     if having:
-        root = QueryNode("HAVING", having, [root])
+        root = QueryNode("HAVING", having_clause_together, [root])
+    
     
     # 6. Wrap PROJECT node for SELECT projections
     select_proj = parsed_sql.get("select", {})
@@ -386,10 +406,21 @@ def build_query_tree(parsed_sql):
                 proj_list.append(f"{alias}.{attr}")
     root = QueryNode("PROJECT", {"projections": proj_list}, [root])
     
+    
     # 7. Order by clause
     order_by = parsed_sql.get("order by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    order_clause_together = ""
+    for token in order_by:
+        order_clause_together+=token['expr']
+        order_clause_together+=" "
+        order_clause_together+=token['direction']
+        order_clause_together+=" "
+
+    # update root node to be order by if there is one
     if order_by:
-        root = QueryNode("ORDER BY", order_by, [root])
+        root = QueryNode("ORDER BY", order_clause_together, [root])
 
     print("\n\nroot",root.children.pop,"\n\n")
     return root
@@ -727,16 +758,16 @@ if __name__ == "__main__":
         initial_graph = build_graph(query_tree)
         
         # Render as PNG
-        initial_graph.render("initial_tree", view=False, format="png")
+        initial_graph.render("initial_tree", view=True, format="png")
         
         
         step1 = optimized_step1(parsed_sql)
         step1_tree = build_graph(step1)
-        step1_tree.render("step1", view=False, format="png")
+        step1_tree.render("step1", view=True, format="png")
 
         step2 = optimized_step2(parsed_sql)
         step2_tree = build_graph(step2)
-        step2_tree.render("step2", view=False, format="png")
+        step2_tree.render("step2", view=True, format="png")
 
         # step3 = optimized_step3(parsed_sql)
         # step3_tree = build_graph(step3)
