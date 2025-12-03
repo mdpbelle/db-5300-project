@@ -567,6 +567,7 @@ def optimized_step2(parsed_sql):
     tables = parsed_sql.get("from", {}).get("tables", {})
     table_nodes = {alias: QueryNode("TABLE", {"name": name}) for alias, name in tables.items()}
 
+
     # 2. Split WHERE into single table and multi table
     where_tokens = parsed_sql.get("where") or []
     single_table = []  # list of (table_alias, condition_dict)
@@ -586,6 +587,7 @@ def optimized_step2(parsed_sql):
             else: 
                 multi_table.append(cond_info) # if multiple tables, it cannot be pushed below the join
 
+
     # 3. handle table nodes with high/low selectivity for single table conditions
     table_nodes_wrapped = {}
     for alias, node in table_nodes.items():
@@ -604,6 +606,7 @@ def optimized_step2(parsed_sql):
             current_node = QueryNode("SELECT", {"condition": " AND ".join(low_sel)}, [current_node]) # add low selectivity higher in tree
 
         table_nodes_wrapped[alias] = current_node
+
 
     # 4. Build JOIN tree
     joins = parsed_sql.get("from", {}).get("joins", []) # grab join dict
@@ -630,17 +633,66 @@ def optimized_step2(parsed_sql):
         cond_str = " AND ".join(c["condition"] for c in multi_table) #include condition
         root = QueryNode("SELECT", {"condition": cond_str}, [root])
 
-    # 6. add PROJECT node at top
+
+    # 6. Group by clause 
+    # get group_by_clause from parsed_sql
+    group_by = parsed_sql.get("group by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    group_clause_together = ""
+    for token in group_by:
+        group_clause_together+=token
+        group_clause_together+=" "
+    if group_by:
+        root = QueryNode("GROUP BY", group_clause_together, [root])   #currently only works if theres only one argument
+
+
+    # 7. Having clause
+    # get having_clause from parsed_sql
+    having = parsed_sql.get("having", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    having_clause_together = ""
+    for token in having:
+        having_clause_together+=token['left']
+        having_clause_together+=" "
+        having_clause_together+=token['operator']
+        having_clause_together+=" "
+        having_clause_together+=token['right']
+        
+    # update root to having node if there is one
+    if having:
+        root = QueryNode("HAVING", having_clause_together, [root])
+    
+    
+    # 8. add PROJECT node at top
     select_proj = parsed_sql.get("select", {})
     proj_list = []
     for alias, attrs in select_proj.items(): # this is already separated by table for later (push projections), so have to loop through all
         for attr in attrs:
             proj_list.append(f"{alias}.{attr}" if alias != "*" else attr) # add projections, if * just use *
 
+    # update root to project node
     root = QueryNode("PROJECT", {"projections": proj_list}, [root]) # add projection node
 
-    return root
 
+     # 9. Order by clause
+    order_by = parsed_sql.get("order by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    order_clause_together = ""
+    for token in order_by:     # should only be one but still
+        order_clause_together+=token['expr']
+        order_clause_together+=" "
+        order_clause_together+=token['direction']
+        order_clause_together+=" "
+
+    # update root node to be order by if there is one
+    if order_by:
+        root = QueryNode("ORDER BY", order_clause_together, [root])
+        
+        
+    return root
 
 def optimized_step3(parsed_sql):
     # 1. Create table nodes
