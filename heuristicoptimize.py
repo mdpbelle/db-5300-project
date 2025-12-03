@@ -390,11 +390,6 @@ def build_query_tree(parsed_sql):
     order_by = parsed_sql.get("order by", [])
     if order_by:
         root = QueryNode("ORDER BY", order_by, [root])
-    
-        
-    
-
-    root = QueryNode("PROJECT", {"projections": proj_list}, [root])
 
     return root
 
