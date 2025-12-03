@@ -25,7 +25,7 @@ def parse_sql_txt(file_path):
         from_clause = re.search(r"FROM\s+(.*?)(?=\s+WHERE|\s+GROUP BY|\s+HAVING|\s+ORDER BY|\s*;|$)", sql_txt_remove_line, re.IGNORECASE)
         print(f"From Clause: {from_clause.group(1)}") #testing
         from_parsed = parse_from(from_clause.group(1))
-        where_clause = re.search(r"WHERE\s+(.*?)\s+(GROUP BY|;)", sql_txt_remove_line, re.IGNORECASE)
+        where_clause = re.search(r"WHERE\s+(.*?)\s*(GROUP BY|;)", sql_txt_remove_line, re.IGNORECASE)
         where_parsed = None
         if where_clause:
             print(f"Where Clause: {where_clause.group(1)}") #testing
@@ -125,7 +125,6 @@ def load_projects(statement):
     return projects_dict
 
 
-# parse from clause which gives tables and joins
 def parse_from(statement):
     # parses FROM clause to extract tables and joins
     # first checks if it is a cartesian product (comma separated tables)
@@ -133,7 +132,7 @@ def parse_from(statement):
     # produces a dict with "tables" and "joins" keys.
     # Join values are dicts with type, left_table, right_table, condition
 
-    # init dictionary for tables and joins
+
     from_clause = {"tables": {}, "joins": []}
     
     # Remove extra whitespace
@@ -324,6 +323,7 @@ def build_query_tree(parsed_sql):
     tables = parsed_sql.get("from", {}).get("tables", {})
     table_nodes = {alias: QueryNode("TABLE", {"name": name}) for alias, name in tables.items()}
 
+
     # 2. Build JOIN nodes if any joins present
     joins = parsed_sql.get("from", {}).get("joins", [])
     if not joins:
@@ -358,23 +358,42 @@ def build_query_tree(parsed_sql):
                 "type": join["type"]
             }, [root, right_node])
 
+
     # 3. Wrap WHERE clause as SELECT node if any condition
     where_tokens = parsed_sql.get("where", [])
     if where_tokens:
         cond_str = tokens_to_condition(where_tokens)
         root = QueryNode("SELECT", {"condition": cond_str}, [root])
-       
+
+
     # 4. Group by clause 
     # get group_by_clause from parsed_sql
     group_by = parsed_sql.get("group by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    group_clause_together = ""
+    for token in group_by:
+        group_clause_together+=token
+        group_clause_together+=" "
     if group_by:
-        root = QueryNode("GROUP BY", group_by, [root])
-        
-    # 5. having clause
+        root = QueryNode("GROUP BY", group_clause_together, [root])   #currently only works if theres only one argument
+
+
+    # 5. Having clause
     # get having_clause from parsed_sql
     having = parsed_sql.get("having", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    having_clause_together = ""
+    for token in having:
+        having_clause_together+=token['left']
+        having_clause_together+=" "
+        having_clause_together+=token['operator']
+        having_clause_together+=" "
+        having_clause_together+=token['right']
     if having:
-        root = QueryNode("HAVING", having, [root])
+        root = QueryNode("HAVING", having_clause_together, [root])
+    
     
     # 6. Wrap PROJECT node for SELECT projections
     select_proj = parsed_sql.get("select", {})
@@ -385,13 +404,321 @@ def build_query_tree(parsed_sql):
                 proj_list.append(attr)
             else:
                 proj_list.append(f"{alias}.{attr}")
-                
-    # 7. Build Order by node  
+    root = QueryNode("PROJECT", {"projections": proj_list}, [root])
+    
+    
+    # 7. Order by clause
     order_by = parsed_sql.get("order by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    order_clause_together = ""
+    for token in order_by:
+        order_clause_together+=token['expr']
+        order_clause_together+=" "
+        order_clause_together+=token['direction']
+        order_clause_together+=" "
+
+    # update root node to be order by if there is one
     if order_by:
-        root = QueryNode("ORDER BY", order_by, [root])
+        root = QueryNode("ORDER BY", order_clause_together, [root])
+
+    print("\n\nroot",root.children.pop,"\n\n")
+    return root
+
+#
+#
+#
+#
+#
+#
+#
+#
+def optimized_step1(parsed_sql):
+    # Push down all selections per table into a single SELECT node above table
+    # If a selection clause has 2 tables, keep above join
+    
+    # 1. Create table nodes
+    tables = parsed_sql.get("from", {}).get("tables", {})
+    table_nodes = {alias: QueryNode("TABLE", {"name": name}) for alias, name in tables.items()}
+
+    # 2. Split WHERE into single table and multi table
+    where_tokens = parsed_sql.get("where") or [] # grab where (selection) dict
+    single_table = []  # list of (table_alias, condition_str)
+    multi_table = []   # list of condition_str
+
+    for token in where_tokens: # parses each selection (where statement) i.e. E.Sex = 'M'
+        if isinstance(token, dict): # checks if token is a dictionary so it doesn't error out
+            tables_in_cond = set() 
+            for side in [token['left'], token['right']]:
+                if '.' in side: # checks if side of condition has a table
+                    tables_in_cond.add(side.split('.')[0]) # get table alias
+            condition_str = f"{token['left']} {token['operator']} {token['right']}" # get full condition string (i.e. E.Sex = 'M')
+
+            if len(tables_in_cond) == 1: # checks how many tables are in condition
+                single_table.append((tables_in_cond.pop(), condition_str)) # if one table, push selection all the way down to table
+            else: 
+                multi_table.append(condition_str) # if multiple tables, it cannot be pushed below the join
+
+    # 3. Create single table condition nodes
+    table_nodes_wrapped = {} 
+    for alias, node in table_nodes.items(): # for each row in the dict
+        conds = [c for a, c in single_table if a == alias] # get all conditions (selections for this table)
+        if conds:
+            combined = " AND ".join(conds) # if multiple conditions, insert AND
+            node = QueryNode("SELECT", {"condition": combined}, [node]) # create a new node above the table with selections
+        table_nodes_wrapped[alias] = node # table node + select conditions
+
+    # 4. Build JOIN tree
+    joins = parsed_sql.get("from", {}).get("joins", []) # grab join dict
+    if not joins: # if there are no Inner/outer joints, create cross joins
+        table_list = list(table_nodes_wrapped.values())
+        if len(table_list) == 1: # if only 1 table, don't need to join
+            root = table_list[0]
+        else:
+            root = table_list[0]
+            for tnode in table_list[1:]:
+                root = QueryNode("JOIN", {"condition": None, "type": "CROSS JOIN"}, [root, tnode]) # Create a cross join node
+    else: # if joins already exist (inner/outer)
+        first_join = joins[0]
+        left_node = table_nodes_wrapped[first_join["left_table"]] # get left table
+        right_node = table_nodes_wrapped[first_join["right_table"]] # get right table
+        root = QueryNode("JOIN", {"condition": first_join["condition"], "type": first_join["type"]}, [left_node, right_node]) # create join node
+
+        for join in joins[1:]: # handles joins with already joined tables (i.e. if you have 3 tables - (A+B)+C )
+            right_node = table_nodes_wrapped[join["right_table"]]
+            root = QueryNode("JOIN", {"condition": join["condition"], "type": join["type"]}, [root, right_node])
+
+    # 5. multi table condition above joins
+    if multi_table:
+        combined_multi = " AND ".join(multi_table) # if multiple conditions, insert AND
+        root = QueryNode("SELECT", {"condition": combined_multi}, [root])
+
+    
+    # 6. Group by clause 
+    # get group_by_clause from parsed_sql
+    group_by = parsed_sql.get("group by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    group_clause_together = ""
+    for token in group_by:
+        group_clause_together+=token
+        group_clause_together+=" "
+    if group_by:
+        root = QueryNode("GROUP BY", group_clause_together, [root])   #currently only works if theres only one argument
+
+
+    # 7. Having clause
+    # get having_clause from parsed_sql
+    having = parsed_sql.get("having", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    having_clause_together = ""
+    for token in having:
+        having_clause_together+=token['left']
+        having_clause_together+=" "
+        having_clause_together+=token['operator']
+        having_clause_together+=" "
+        having_clause_together+=token['right']
+        
+    # update root to having node if there is one
+    if having:
+        root = QueryNode("HAVING", having_clause_together, [root])
+    
+    
+    # 8. add PROJECT node at top
+    select_proj = parsed_sql.get("select", {})
+    proj_list = []
+    for alias, attrs in select_proj.items(): # this is already separated by table for later (push projections), so have to loop through all
+        for attr in attrs:
+            proj_list.append(f"{alias}.{attr}" if alias != "*" else attr) # add projections, if * just use *
+
+    # update root to project node
+    root = QueryNode("PROJECT", {"projections": proj_list}, [root]) # add projection node
+
+
+     # 9. Order by clause
+    order_by = parsed_sql.get("order by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    order_clause_together = ""
+    for token in order_by:     # should only be one but still
+        order_clause_together+=token['expr']
+        order_clause_together+=" "
+        order_clause_together+=token['direction']
+        order_clause_together+=" "
+
+    # update root node to be order by if there is one
+    if order_by:
+        root = QueryNode("ORDER BY", order_clause_together, [root])
+
 
     return root
+
+
+
+def optimized_step2(parsed_sql):
+    # Push down selections by selectivity:
+    # Single table:
+    #   High selectivity (=) closest to table
+    #   Low selectivity (<, >, <=, >=, !=, <>) on top
+    # Multi table: stay above joins
+    
+    # 1. Create table nodes
+    tables = parsed_sql.get("from", {}).get("tables", {})
+    table_nodes = {alias: QueryNode("TABLE", {"name": name}) for alias, name in tables.items()}
+
+    # 2. Split WHERE into single table and multi table
+    where_tokens = parsed_sql.get("where") or []
+    single_table = []  # list of (table_alias, condition_dict)
+    multi_table = []   # list of condition_dict
+
+    for token in where_tokens: # parses each selection (where statement) i.e. E.Sex = 'M'
+        if isinstance(token, dict): # checks if token is a dictionary so it doesn't error out
+            tables_in_cond = set()
+            for side in [token['left'], token['right']]:
+                if '.' in side: # checks if side of condition has a table
+                    tables_in_cond.add(side.split('.')[0]) # get table alias
+            condition_str = f"{token['left']} {token['operator']} {token['right']}" # get full condition string (i.e. E.Sex = 'M')
+            cond_info = {"condition": condition_str, "operator": token['operator']} # get operator for ordering of selections
+
+            if len(tables_in_cond) == 1: # checks how many tables are in condition
+                single_table.append((tables_in_cond.pop(), cond_info)) # if one table, push selection all the way down to table
+            else: 
+                multi_table.append(cond_info) # if multiple tables, it cannot be pushed below the join
+
+    # 3. handle table nodes with high/low selectivity for single table conditions
+    table_nodes_wrapped = {}
+    for alias, node in table_nodes.items():
+        conds = [c for a, c in single_table if a == alias] # Get all conditions
+        if not conds:
+            table_nodes_wrapped[alias] = node
+            continue
+
+        high_sel = [c['condition'] for c in conds if c['operator'] == '='] # if operator is =, should be closer to table
+        low_sel = [c['condition'] for c in conds if c['operator'] != '='] # otherwise, needs to be higher in tree
+
+        current_node = node
+        if high_sel:
+            current_node = QueryNode("SELECT", {"condition": " AND ".join(high_sel)}, [current_node]) # adds higher selectivity node first
+        if low_sel:
+            current_node = QueryNode("SELECT", {"condition": " AND ".join(low_sel)}, [current_node]) # add low selectivity higher in tree
+
+        table_nodes_wrapped[alias] = current_node
+
+    # 4. Build JOIN tree
+    joins = parsed_sql.get("from", {}).get("joins", []) # grab join dict
+    if not joins: # if there are no Inner/outer joints, create cross joins
+        table_list = list(table_nodes_wrapped.values())
+        if len(table_list) == 1: # if only 1 table, don't need to join
+            root = table_list[0]
+        else:
+            root = table_list[0]
+            for tnode in table_list[1:]:
+                root = QueryNode("JOIN", {"condition": None, "type": "CROSS JOIN"}, [root, tnode]) # Create a cross join node
+    else: # if joins already exist (inner/outer)
+        first_join = joins[0]
+        left_node = table_nodes_wrapped[first_join["left_table"]] # get left table
+        right_node = table_nodes_wrapped[first_join["right_table"]] # get right table
+        root = QueryNode("JOIN", {"condition": first_join["condition"], "type": first_join["type"]}, [left_node, right_node]) # create join node
+
+        for join in joins[1:]: # handles joins with already joined tables (i.e. if you have 3 tables - (A+B)+C )
+            right_node = table_nodes_wrapped[join["right_table"]]
+            root = QueryNode("JOIN", {"condition": join["condition"], "type": join["type"]}, [root, right_node])
+
+    # 5. multi table condition above joins
+    if multi_table:
+        cond_str = " AND ".join(c["condition"] for c in multi_table) #include condition
+        root = QueryNode("SELECT", {"condition": cond_str}, [root])
+
+    # 6. add PROJECT node at top
+    select_proj = parsed_sql.get("select", {})
+    proj_list = []
+    for alias, attrs in select_proj.items(): # this is already separated by table for later (push projections), so have to loop through all
+        for attr in attrs:
+            proj_list.append(f"{alias}.{attr}" if alias != "*" else attr) # add projections, if * just use *
+
+    root = QueryNode("PROJECT", {"projections": proj_list}, [root]) # add projection node
+
+    return root
+
+
+def optimized_step3(parsed_sql):
+    # 1. Create table nodes
+    tables = parsed_sql.get("from", {}).get("tables", {})
+    table_nodes = {alias: QueryNode("TABLE", {"name": name}) for alias, name in tables.items()}
+
+    # 2. Split WHERE into single table and multi table
+    where_tokens = parsed_sql.get("where") or []
+    single_table = []  # list of (table_alias, condition_dict)
+    multi_table = []   # list of condition_dict
+
+    for token in where_tokens: # parses each selection (where statement) i.e. E.Sex = 'M'
+        if isinstance(token, dict): # checks if token is a dictionary so it doesn't error out
+            tables_in_cond = set()
+            for side in [token['left'], token['right']]:
+                if '.' in side: # checks if side of condition has a table
+                    tables_in_cond.add(side.split('.')[0]) # get table alias
+            condition_str = f"{token['left']} {token['operator']} {token['right']}" # get full condition string (i.e. E.Sex = 'M')
+            cond_info = {"condition": condition_str, "operator": token['operator']} # get operator for ordering of selections
+
+            if len(tables_in_cond) == 1: # checks how many tables are in condition
+                single_table.append((tables_in_cond.pop(), cond_info)) # if one table, push selection all the way down to table
+            else: 
+                multi_table.append(cond_info) # if multiple tables, it cannot be pushed below the join
+
+    # 3. handle table nodes with high/low selectivity for single table conditions
+    table_nodes_wrapped = {}
+    for alias, node in table_nodes.items():
+        conds = [c for a, c in single_table if a == alias] # Get all conditions
+        if not conds:
+            table_nodes_wrapped[alias] = node
+            continue
+
+        high_sel = [c['condition'] for c in conds if c['operator'] == '='] # if operator is =, should be closer to table
+        low_sel = [c['condition'] for c in conds if c['operator'] != '='] # otherwise, needs to be higher in tree
+
+        current_node = node
+        if high_sel:
+            current_node = QueryNode("SELECT", {"condition": " AND ".join(high_sel)}, [current_node]) # adds higher selectivity node first
+        if low_sel:
+            current_node = QueryNode("SELECT", {"condition": " AND ".join(low_sel)}, [current_node]) # add low selectivity higher in tree
+
+        table_nodes_wrapped[alias] = current_node
+
+    # 4. Build JOIN tree
+    joins = parsed_sql.get("from", {}).get("joins", []) # grab join dict
+    if not joins: # if there are no Inner/outer joints, create cross joins
+        #
+        # TODO add logic for when a cross join is present
+        # 
+    # else: # if joins already exist (inner/outer)
+        first_join = joins[0]
+        left_node = table_nodes_wrapped[first_join["left_table"]] # get left table
+        right_node = table_nodes_wrapped[first_join["right_table"]] # get right table
+        root = QueryNode("JOIN", {"condition": first_join["condition"], "type": first_join["type"]}, [left_node, right_node]) # create join node
+
+        for join in joins[1:]: # handles joins with already joined tables (i.e. if you have 3 tables - (A+B)+C )
+            right_node = table_nodes_wrapped[join["right_table"]]
+            root = QueryNode("JOIN", {"condition": join["condition"], "type": join["type"]}, [root, right_node])
+
+    # 5. multi table condition above joins
+    if multi_table:
+        cond_str = " AND ".join(c["condition"] for c in multi_table) #include condition
+        root = QueryNode("SELECT", {"condition": cond_str}, [root])
+
+    # 6. add PROJECT node at top
+    select_proj = parsed_sql.get("select", {})
+    proj_list = []
+    for alias, attrs in select_proj.items(): # this is already separated by table for later (push projections), so have to loop through all
+        for attr in attrs:
+            proj_list.append(f"{alias}.{attr}" if alias != "*" else attr) # add projections, if * just use *
+
+    root = QueryNode("PROJECT", {"projections": proj_list}, [root]) # add projection node
+
+    return root
+
+
+
 
 def tokens_to_condition(tokens):
     result = []
@@ -432,8 +759,14 @@ def build_graph(node, graph=None, parent=None):
         label = f"SELECT\n{node.details.get('condition','')}"
     elif node.node_type == "JOIN":
         label = f"{node.details.get('type','JOIN')}\n{node.details.get('condition','')}"
+    elif node.node_type == "GROUP BY":    
+        label = f"GROUP BY\n{node.details}"  # TODO: fix formatting so there arent brackets in output
+    elif node.node_type == "HAVING":
+        label = f"HAVING\n{node.details}" # TODO: fix formatting
+    elif node.node_type == "ORDER BY":
+        label = f"ORDER BY\n{node.details}"  # TODO: fix formatting
     else:
-        label = f"{node.node_type}\n{node.details.get('name','')}"
+        label = f"{node.node_type}\n{node.details.get('name','')}"   # this is the part that messes up when i add the group by clause
     
     graph.node(node_id, label)
     
@@ -445,43 +778,53 @@ def build_graph(node, graph=None, parent=None):
     
     return graph
 
+'''
+
+1. Push down selections (rule 1 & 2)
+2. small selectivity first - equal before range (rule 3)
+3. Replace cartesian product and selection with join (rule 4)
+4. Push projections down (rule 5)
+
+'''
+
+
+
+
 # main driver function
 if __name__ == "__main__":
-    input_file = "input3.txt"
+    filenum = input()
+    if (filenum=="1"):
+        input_file = "input.txt"
+    elif (filenum=="2"):
+        input_file = "input2.txt"
+    else:
+        input_file = "input3.txt"
+
     parsed_sql = parse_sql_txt(input_file)
     if parsed_sql:
-        # build canonical tree
         query_tree = build_query_tree(parsed_sql)
         
-        # build canonical tree graph
+        # Build Graphviz graph
         initial_graph = build_graph(query_tree)
         
-        # render canonical tree graph as png
-        initial_graph.render("query_plan_tree", view=True, format="png")
+        # Render as PNG
+        initial_graph.render("initial_tree", view=False, format="png")
         
-        # OPTIMIZATION
-        # step 1: break up selections
-        # build tree           
-        optimize_step1(parsed_sql);
-        # build graph
-        # render graph as png
-         
-        # step 2: push down selections
-        # build tree
-        # build graph
-        # render graph as png
         
-        # step 3: sort selections by selectivity
-        # build tree
-        # build graph
-        # render graph as png
+        step1 = optimized_step1(parsed_sql)
+        step1_tree = build_graph(step1)
+        step1_tree.render("step1", view=False, format="png")
+
+        step2 = optimized_step2(parsed_sql)
+        step2_tree = build_graph(step2)
+        step2_tree.render("step2", view=False, format="png")
+
+        # step3 = optimized_step3(parsed_sql)
+        # step3_tree = build_graph(step3)
+        # step3_tree.render("step3", view=True, format="png")
+
+        # step4 = optimized_step4(parsed_sql)
+        # step4_tree = build_graph(step4)
+        # step4_tree.render("step4", view=True, format="png")
+
         
-        # step 4: replace cross join + selection with equi-join
-        # build tree
-        # build graph
-        # render graph as png
-        
-        # step 5: push projections down
-        # build tree
-        # build graph
-        # render graph as png
