@@ -363,7 +363,19 @@ def build_query_tree(parsed_sql):
         cond_str = tokens_to_condition(where_tokens)
         root = QueryNode("SELECT", {"condition": cond_str}, [root])
 
-    # 4. Wrap PROJECT node for SELECT projections
+    # 4. Group by clause 
+    # get group_by_clause from parsed_sql
+    group_by = parsed_sql.get("group by", [])
+    if group_by:
+        root = QueryNode("GROUP BY", group_by, [root])
+
+    # 5. Having clause
+    # get having_clause from parsed_sql
+    having = parsed_sql.get("having", [])
+    if having:
+        root = QueryNode("HAVING", having, [root])
+    
+    # 6. Wrap PROJECT node for SELECT projections
     select_proj = parsed_sql.get("select", {})
     proj_list = []
     for alias, attrs in select_proj.items():
@@ -372,8 +384,12 @@ def build_query_tree(parsed_sql):
                 proj_list.append(attr)
             else:
                 proj_list.append(f"{alias}.{attr}")
-
     root = QueryNode("PROJECT", {"projections": proj_list}, [root])
+    
+    # 7. Order by clause
+    order_by = parsed_sql.get("order by", [])
+    if order_by:
+        root = QueryNode("ORDER BY", order_by, [root])
 
     print("\n\nroot",root.children.pop,"\n\n")
     return root
@@ -662,8 +678,14 @@ def build_graph(node, graph=None, parent=None):
         label = f"SELECT\n{node.details.get('condition','')}"
     elif node.node_type == "JOIN":
         label = f"{node.details.get('type','JOIN')}\n{node.details.get('condition','')}"
+    elif node.node_type == "GROUP BY":    
+        label = f"GROUP BY\n{node.details}"  # TODO: fix formatting so there arent brackets in output
+    elif node.node_type == "HAVING":
+        label = f"HAVING\n{node.details}" # TODO: fix formatting
+    elif node.node_type == "ORDER BY":
+        label = f"ORDER BY\n{node.details}"  # TODO: fix formatting
     else:
-        label = f"{node.node_type}\n{node.details.get('name','')}"
+        label = f"{node.node_type}\n{node.details.get('name','')}"   # this is the part that messes up when i add the group by clause
     
     graph.node(node_id, label)
     
@@ -705,16 +727,16 @@ if __name__ == "__main__":
         initial_graph = build_graph(query_tree)
         
         # Render as PNG
-        initial_graph.render("initial_tree", view=True, format="png")
+        initial_graph.render("initial_tree", view=False, format="png")
         
         
         step1 = optimized_step1(parsed_sql)
         step1_tree = build_graph(step1)
-        step1_tree.render("step1", view=True, format="png")
+        step1_tree.render("step1", view=False, format="png")
 
         step2 = optimized_step2(parsed_sql)
         step2_tree = build_graph(step2)
-        step2_tree.render("step2", view=True, format="png")
+        step2_tree.render("step2", view=False, format="png")
 
         # step3 = optimized_step3(parsed_sql)
         # step3_tree = build_graph(step3)
