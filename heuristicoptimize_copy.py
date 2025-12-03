@@ -493,14 +493,64 @@ def optimized_step1(parsed_sql):
         combined_multi = " AND ".join(multi_table) # if multiple conditions, insert AND
         root = QueryNode("SELECT", {"condition": combined_multi}, [root])
 
-    # 6. add PROJECT node at top
+    
+    # 6. Group by clause 
+    # get group_by_clause from parsed_sql
+    group_by = parsed_sql.get("group by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    group_clause_together = ""
+    for token in group_by:
+        group_clause_together+=token
+        group_clause_together+=" "
+    if group_by:
+        root = QueryNode("GROUP BY", group_clause_together, [root])   #currently only works if theres only one argument
+
+
+    # 7. Having clause
+    # get having_clause from parsed_sql
+    having = parsed_sql.get("having", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    having_clause_together = ""
+    for token in having:
+        having_clause_together+=token['left']
+        having_clause_together+=" "
+        having_clause_together+=token['operator']
+        having_clause_together+=" "
+        having_clause_together+=token['right']
+        
+    # update root to having node if there is one
+    if having:
+        root = QueryNode("HAVING", having_clause_together, [root])
+    
+    
+    # 8. add PROJECT node at top
     select_proj = parsed_sql.get("select", {})
     proj_list = []
     for alias, attrs in select_proj.items(): # this is already separated by table for later (push projections), so have to loop through all
         for attr in attrs:
             proj_list.append(f"{alias}.{attr}" if alias != "*" else attr) # add projections, if * just use *
 
+    # update root to project node
     root = QueryNode("PROJECT", {"projections": proj_list}, [root]) # add projection node
+
+
+     # 9. Order by clause
+    order_by = parsed_sql.get("order by", [])
+    
+    # build one long clause to put in the details attribute of QueryNode (for good printing)
+    order_clause_together = ""
+    for token in order_by:     # should only be one but still
+        order_clause_together+=token['expr']
+        order_clause_together+=" "
+        order_clause_together+=token['direction']
+        order_clause_together+=" "
+
+    # update root node to be order by if there is one
+    if order_by:
+        root = QueryNode("ORDER BY", order_clause_together, [root])
+
 
     return root
 
