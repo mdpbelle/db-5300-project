@@ -1,8 +1,9 @@
 # db-5300-project
 heuristic SQL query optimizer
 
-Assumptions:
-- currently only can handle 3 tables
-- no groupby, having, or order functionality yet
-- proper syntax is used
-- tables in FROM clause are specified as single letters (EX. "EMPLOYEE E")
+
+- load input query into "input.txt"
+- sudo apt install graphviz
+- to run: python3 heuristicoptimize.py
+- generates canonical.png, step1.png, step2.png, step3.png, step4.png
+- prints to console context for each png

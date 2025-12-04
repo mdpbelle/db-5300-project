@@ -12,7 +12,14 @@ def parse_sql_txt(file_path):
             sql_txt = f.read()
         
         sql_txt_remove_line = sql_txt.replace('\n', ' ')
-        print(sql_txt_remove_line)
+
+        # Remove everything up until the first SELECT
+        sql_txt_remove_line = re.sub(r'^(.*?)SELECT\s+', 'SELECT ', sql_txt_remove_line, flags=re.IGNORECASE)
+
+        # Remove comments -- anything after -- to end of line
+        sql_txt_remove_line = re.sub(r'--.*?(\r\n|\r|\n)', ' ', sql_txt_remove_line)
+
+        # print(sql_txt_remove_line)
         # Split the content by semicolon and SQL operation keywords
         # Extracts each part of the SQL statement (excluding the keyword)
         #
@@ -925,13 +932,9 @@ def build_graph(node, graph=None, parent=None):
 
 # main driver function
 if __name__ == "__main__":
-    filenum = input()
-    if (filenum=="1"):
-        input_file = "input.txt"
-    elif (filenum=="2"):
-        input_file = "input2.txt"
-    else:
-        input_file = "input3.txt"
+    input_file = "input.txt"
+
+    render_images = False
 
     parsed_sql = parse_sql_txt(input_file)
     if parsed_sql:
@@ -939,7 +942,7 @@ if __name__ == "__main__":
         print("Canonical tree generated as 'canonical.png'\n\n")
         query_tree = build_canonical(parsed_sql)
         initial_graph = build_graph(query_tree)
-        initial_graph.render("canonical", view=True, format="png")
+        initial_graph.render("canonical", view=render_images, format="png")
 
         
         # 1. Push down selections (rule 1 & 2)
@@ -949,7 +952,7 @@ if __name__ == "__main__":
         print("Step 1 tree generated as 'step1.png'\n\n")
         step1 = optimized_step1(parsed_sql)
         step1_tree = build_graph(step1)
-        step1_tree.render("step1", view=False, format="png")
+        step1_tree.render("step1", view=render_images, format="png")
 
         
         # 2. small selectivity first - equal before range (rule 3)
@@ -958,7 +961,7 @@ if __name__ == "__main__":
         print("Step 2 tree generated as 'step2.png'\n\n")
         step2 = optimized_step2(parsed_sql)
         step2_tree = build_graph(step2)
-        step2_tree.render("step2", view=False, format="png")
+        step2_tree.render("step2", view=render_images, format="png")
 
         # 3. Replace cartesian product and selection with join (rule 4)
         print("Step 3. Replace cartesian products with joins")
@@ -966,7 +969,7 @@ if __name__ == "__main__":
         print("Step 3 tree generated as 'step3.png'\n\n")
         step3 = optimized_step3(parsed_sql)
         step3_tree = build_graph(step3)
-        step3_tree.render("step3", view=False, format="png")
+        step3_tree.render("step3", view=render_images, format="png")
 
 
         # 4. Push projections down (rule 5)
@@ -975,6 +978,6 @@ if __name__ == "__main__":
         print("Step 4 tree generated as 'step4.png'\n\n")
         step4 = optimized_step4(parsed_sql)
         step4_tree = build_graph(step4)
-        step4_tree.render("step4", view=False, format="png")
+        step4_tree.render("step4", view=render_images, format="png")
 
         
