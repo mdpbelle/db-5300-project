@@ -20,39 +20,40 @@ def parse_sql_txt(file_path):
         # it then captures everything after the keyword until hitting another keyword or ;
         # then passes that to the respective parser function
         select_clause = re.search(r"SELECT\s+(.*?)\s+FROM", sql_txt_remove_line, re.IGNORECASE)
-        print(f"Select Clause: {select_clause.group(1)}") #testing
+        #print(f"Select Clause: {select_clause.group(1)}") #testing
         select_parsed = parse_select(select_clause.group(1))
         from_clause = re.search(r"FROM\s+(.*?)(?=\s+WHERE|\s+GROUP BY|\s+HAVING|\s+ORDER BY|\s*;|$)", sql_txt_remove_line, re.IGNORECASE)
-        print(f"From Clause: {from_clause.group(1)}") #testing
+        #print(f"From Clause: {from_clause.group(1)}") #testing
         from_parsed = parse_from(from_clause.group(1))
         where_clause = re.search(r"WHERE\s+(.*?)\s*(GROUP BY|;)", sql_txt_remove_line, re.IGNORECASE)
         where_parsed = None
         if where_clause:
-            print(f"Where Clause: {where_clause.group(1)}") #testing
+            #print(f"Where Clause: {where_clause.group(1)}") #testing
             where_parsed = parse_where(where_clause.group(1))
         group_by_clause = re.search(r"GROUP BY\s+(.*?)\s+(HAVING|;)", sql_txt_remove_line, re.IGNORECASE)
         group_by_parsed = None
         if group_by_clause:
-            print(f"Group By Clause: {group_by_clause.group(1)}") #testing
+            #print(f"Group By Clause: {group_by_clause.group(1)}") #testing
             group_by_parsed = parse_group_by(group_by_clause.group(1))
         having_clause = re.search(r"HAVING\s+(.*?)\s+(ORDER BY|;)", sql_txt_remove_line, re.IGNORECASE)
         having_parsed = None
         if having_clause:
-            print(f"Having Clause: {having_clause.group(1)}") #testing
+            #print(f"Having Clause: {having_clause.group(1)}") #testing
             having_parsed = parse_having(having_clause.group(1))
         order_by_clause = re.search(r"ORDER BY\s+(.*?);", sql_txt_remove_line, re.IGNORECASE)
         order_by_parsed = None
         if order_by_clause:
-            print(f"Order By Clause: {order_by_clause.group(1)}") #testing
+            #print(f"Order By Clause: {order_by_clause.group(1)}") #testing
             order_by_parsed = parse_order_by(order_by_clause.group(1))
 
+        # Return all parsed components as a dictionary of clauses
         return {
-            "select": select_parsed, 
-            "from": from_parsed, 
-            "where": where_parsed, 
-            "group by": group_by_parsed, 
-            "having": having_parsed, 
-            "order by": order_by_parsed
+            "select": select_parsed, # dict of projections
+            "from": from_parsed, # dict of tables and joins
+            "where": where_parsed, # list of selection predicates
+            "group by": group_by_parsed, # list of grouping expressions
+            "having": having_parsed, # list of having predicates
+            "order by": order_by_parsed # list of order by expressions
         }
 
         
@@ -62,7 +63,6 @@ def parse_sql_txt(file_path):
     except Exception as e:
         print(f"An error occurred: {e}")
         
-    # return 
     return
 
 def parse_select(statement):
@@ -93,10 +93,10 @@ def load_projects(statement):
 
         # Aggregate function handling (COUNT, SUM, AVG, MIN, MAX)
         if '(' in p:
-            func_name = p[:p.index('(')].upper()
+            func_name = p[:p.index('(')].upper() # get function name
 
-            if func_name in AGGREGATE_FUNCTIONS:
-                inner = p[p.index('(')+1 : p.rindex(')')].strip()
+            if func_name in AGGREGATE_FUNCTIONS: # check if it is an aggregate function
+                inner = p[p.index('(')+1 : p.rindex(')')].strip() # strip out the inner attribute
 
                 # inside is "A.col"
                 if "." in inner:
@@ -119,8 +119,8 @@ def load_projects(statement):
         projects_dict.setdefault(project_table, []).append(project_attribute)
 
     # DEBUG
-    for key, value in projects_dict.items():
-        print(key, "=", value)
+    # for key, value in projects_dict.items():
+    #     print(key, "=", value)
 
     return projects_dict
 
@@ -133,12 +133,12 @@ def parse_from(statement):
     # Join values are dicts with type, left_table, right_table, condition
 
 
-    from_clause = {"tables": {}, "joins": []}
+    from_clause = {"tables": {}, "joins": []} # initialize from clause dict, tables are dict, joins are list of dicts
     
     # Remove extra whitespace
     statement = ' '.join(statement.strip().split())
     
-    print(f"Parsing FROM clause: {statement}")  # DEBUG
+    # print(f"Parsing FROM clause: {statement}")  # DEBUG
 
     if ',' in statement:
         # handle cartesian products
@@ -146,26 +146,26 @@ def parse_from(statement):
         for t in tables:
             # Regex to match table with optional alias: "TableName Alias"
             table_alias = re.compile(r"(\w+)(?:\s+(\w+))?", re.IGNORECASE)
-            table_name = table_alias.match(t)
+            table_name = table_alias.match(t) # create match object for each table
             if not table_name:
                 raise ValueError(f"Cannot parse table in FROM clause: {t}")
-            name, alias = table_name.groups()
+            name, alias = table_name.groups() # extract name and alias from the match
             alias = alias or name
-            from_clause["tables"][alias] = name
-        print(f"FROM clause parsed (cartesian products): {from_clause}")  # DEBUG
+            from_clause["tables"][alias] = name # add to tables dict
+        # print(f"FROM clause parsed (cartesian products): {from_clause}")  # DEBUG
         return from_clause
 
 
     # Regex to match first table: "TableName Alias"
     first_table_regex = re.compile(r"(\w+)(?:\s+(\w+))?", re.IGNORECASE)
-    m = first_table_regex.match(statement)
+    m = first_table_regex.match(statement) # create match object for first table
     if not m:
         raise ValueError("Cannot parse first table in FROM clause")
     
-    table_name, alias = m.groups()
-    alias = alias or table_name
-    from_clause["tables"][alias] = table_name
-    last_alias = alias
+    table_name, alias = m.groups() # extract table name and alias from the match
+    alias = alias or table_name # if no alias, use table name
+    from_clause["tables"][alias] = table_name # add to tables dict
+    last_alias = alias # keep track of last alias for joins
     
     # Remove the matched first table from statement
     statement = statement[m.end():].strip()
@@ -177,15 +177,16 @@ def parse_from(statement):
         re.IGNORECASE
     )
     
-    while statement:
-        jm = join_regex.match(statement)
-        if not jm:
+    while statement: # iteratively parse joins
+        jm = join_regex.match(statement) # create match object for join
+        if not jm: # if there is no join match, theres no joins
             break  # no more joins
         
-        join_type, right_table, right_alias, condition = jm.groups()
-        join_type = (join_type or "JOIN").upper()
+        join_type, right_table, right_alias, condition = jm.groups() # extract join info from match
+        join_type = (join_type or "JOIN").upper() # default to JOIN if no type specified
         
-        from_clause["tables"][right_alias] = right_table
+        from_clause["tables"][right_alias] = right_table # add right table to tables dict
+        # add join info as dict to joins list
         from_clause["joins"].append({
             "type": join_type,
             "left_table": last_alias,
@@ -194,25 +195,26 @@ def parse_from(statement):
         })
         
         last_alias = right_alias
-        statement = statement[jm.end():].strip()
-    print(f"FROM clause parsed: {from_clause}")  # DEBUG
+        statement = statement[jm.end():].strip() # remove matched join from statement
+    # print(f"FROM clause parsed: {from_clause}")  # DEBUG
     return from_clause
 
 def parse_where(statement):
     # Parse the WHERE clause into structured predicates.
     # Supports AND/OR, parentheses, and comparison operators.
 
-    if not statement or not statement.strip():
+    if not statement or not statement.strip(): # if empty, return empty list
         return []
 
-    s = statement.strip()
+    s = statement.strip() # remove leading/trailing whitespace
 
     operators = [
         r">=", r"<=", r"<>", r"!=", r"=", r">", r"<",
         r"LIKE", r"IN", r"BETWEEN", r"IS NOT", r"IS"
-    ]
-    operator_regex = "|".join(operators)
+    ] # these are the list of possible opertors in SQL, not sure which all are used in the assignment
+    operator_regex = "|".join(operators) # join operators with or for regex
 
+    # match tokens: parentheses, AND/OR, comparisons
     token_regex = re.compile(
         rf"""
         (\()                    |   # "("
@@ -241,8 +243,9 @@ def parse_where(statement):
                 continue
             raise ValueError(f"Unrecognized token in WHERE/HAVING clause at: {s[idx:]}")
 
-        g = m.groups()
+        g = m.groups() # get matched groups
 
+        # Determine which group matched and create corresponding token
         if g[0]:
             tokens.append("(")
         elif g[1]:
@@ -256,9 +259,9 @@ def parse_where(statement):
                 "right": g[5]
             })
 
-        idx = m.end()
+        idx = m.end() # move index to end of matched token
 
-    print("WHERE Parsed Tokens:", tokens)
+    # print("WHERE Parsed Tokens:", tokens)
     return tokens
 
 
@@ -300,15 +303,15 @@ def parse_order_by(statement):
     results = []
     for part in parts:
         # Detect ASC/DESC (default ASC)
-        m = re.match(r"(.+?)\s+(ASC|DESC)$", part, re.IGNORECASE)
+        m = re.match(r"(.+?)\s+(ASC|DESC)$", part, re.IGNORECASE) # match expression with optional direction (ASC/DESC)
         if m:
-            expr = m.group(1).strip()
-            direction = m.group(2).upper()
+            expr = m.group(1).strip() # extract expression
+            direction = m.group(2).upper() # extract direction
         else:
             expr = part
-            direction = "ASC"  # SQL default
+            direction = "ASC" # SQL default
 
-        results.append({
+        results.append({ # add to results list
             "expr": expr,
             "direction": direction
         })
@@ -317,8 +320,11 @@ def parse_order_by(statement):
     return results
 
 
-################ TREE PRINTING
-def build_query_tree(parsed_sql):
+###############################################
+################ TREE PRINTING ################
+###############################################
+
+def build_canonical(parsed_sql):
     # 1. Create TABLE nodes for all tables
     tables = parsed_sql.get("from", {}).get("tables", {})
     table_nodes = {alias: QueryNode("TABLE", {"name": name}) for alias, name in tables.items()}
@@ -495,10 +501,11 @@ def groupby_having_orderby(parsed_sql, root):
         root = QueryNode("ORDER BY", order_clause_together, [root])
     
     return root
-# 
-#
-#
-#
+
+###############################################
+############### OPTIMIZATION ##################
+###############################################
+
 def optimized_step1(parsed_sql):
     # Push down all selections per table into a single SELECT node above table
     # If a selection clause has 2 tables, keep above join
@@ -716,99 +723,132 @@ def optimized_step3(parsed_sql):
 
 
 def optimized_step4(parsed_sql):
-    # Push projections down as far as possible
-    # For joins, only keep attributes needed for join conditions and higher nodes
+    # Push down projections to tables based on needed attributes
 
-    # if selecting all, no need to push projections
+    # If selecting all, use previous logic without projection pushdown
     select_proj = parsed_sql.get("select", {})
-    is_select_all = ("*" in select_proj and len(select_proj["*"]) == 1)
-
+    is_select_all = ("*" in select_proj and len(select_proj.get("*", [])) == 1)
     if is_select_all:
         return optimized_step3(parsed_sql)
-    else:
-        # TODO: implement projection pushdown logic
-        table_nodes_wrapped, multi_table = handle_selections(parsed_sql)
-        table_list = list(table_nodes_wrapped.values()) 
-        root = table_list[0]
-        tables = parsed_sql.get("from", {}).get("tables", []) # grab table dict
-      
-        for alias, attrs in select_proj.items(): # this is already separated by table for later (push projections), so have to loop through all
-            for t in tables:
-                print(f"\ntable {t}")      # FOR DEBUG ONLY
-                print(f"alias {alias}")    # FOR DEBUG ONLY
-                #print(f"attrs {attrs}")    # FOR DEBUG ONLY
-                if t == alias:
-                    print("TRUE")   # FOR DEBUG ONLY
-                    # create project clause
-                    project_clause = f"{alias}"
-                    project_clause += "."
-                    project_clause += f"{attrs[0]}"
-                    print(f"{project_clause}")  # FOR DEBUG ONLY
-                    root = QueryNode("PROJECT", project_clause, [root]) # add projection node
 
-        
-        # update root to project node
-        #root = QueryNode("PROJECT", {"projections": proj_list}, [root]) # add projection node
+   
+    table_nodes_wrapped, multi_table = handle_selections(parsed_sql)
+    tables = parsed_sql.get("from", {}).get("tables", {})
 
+    # Build JOIN tree
+    joins = parsed_sql.get("from", {}).get("joins", [])
+    table_list = list(table_nodes_wrapped.values())
 
-        # 2. Build JOIN tree
-        joins = parsed_sql.get("from", {}).get("joins", []) # grab join dict
-        if not joins: # if there are no Inner/outer joints, create cross joins
+    if not joins:
+        if len(table_list) == 1:
+            root = table_list[0]
+        else:
+            root = table_list[0]
+            for tnode in table_list[1:]:
+                root = QueryNode(
+                    "JOIN",
+                    {"condition": None, "type": "CROSS JOIN"},
+                    [root, tnode]
+                )
 
-            # If only one table, nothing to join
-            if len(table_list) == 1:
-                root = table_list[0]
+        # Convert CROSS JOIN to INNER JOIN when possible
+        equi, leftover = [], []
+        for cond in multi_table:
+            text = cond["condition"]
+            op = cond["operator"]
+            left, right = text.split(f" {op} ")
+            if op == "=" and "." in left and "." in right:
+                equi.append(text)
             else:
-                # Build the CROSS JOIN chain
-                root = table_list[0]
-                for tnode in table_list[1:]:
-                    root = QueryNode(
-                        "JOIN",
-                        {"condition": None, "type": "CROSS JOIN"},
-                        [root, tnode]
-                    )
+                leftover.append(text)
 
-            # convert CROSS JOIN to INNER JOIN if multi table condition is equijoin
-            equi_join_preds = []
-            leftover_select_preds = []
+        if equi:
+            root.details["type"] = "INNER JOIN"
+            root.details["condition"] = " AND ".join(equi)
 
-            for cond in multi_table:
-                condition_str = cond["condition"]
-                op = cond["operator"]
+        multi_table = [{"condition": c} for c in leftover]
 
-                # extract left and right sides
-                left, right = condition_str.split(f" {op} ")
+    else:
+        j = joins[0]
+        left = table_nodes_wrapped[j["left_table"]]
+        right = table_nodes_wrapped[j["right_table"]]
+        root = QueryNode("JOIN", {"condition": j["condition"], "type": j["type"]}, [left, right])
+        for j in joins[1:]:
+            right = table_nodes_wrapped[j["right_table"]]
+            root = QueryNode("JOIN", {"condition": j["condition"], "type": j["type"]}, [root, right])
 
-                # check if operator is = and both sides use a table
-                if op == "=" and "." in left and "." in right:
-                    equi_join_preds.append(condition_str)
-                else:
-                    leftover_select_preds.append(condition_str)
+    # multi table condition above joins
+    if multi_table:
+        cond_str = " AND ".join(c["condition"] for c in multi_table)
+        root = QueryNode("SELECT", {"condition": cond_str}, [root])
 
-            # If equi-join predicates found, rewrite root join
-            if equi_join_preds:
-                root.details["type"] = "INNER JOIN"
-                root.details["condition"] = " AND ".join(equi_join_preds)
+    # 3. get needed attributes per table
+    needed = {alias: set() for alias in tables.keys()}
 
-                # keep only leftover predicates for the SELECT above join
-                multi_table = [{"condition": p} for p in leftover_select_preds]
-            
-        else: # if joins already exist (inner/outer)
-            first_join = joins[0]
-            left_node = table_nodes_wrapped[first_join["left_table"]] # get left table
-            right_node = table_nodes_wrapped[first_join["right_table"]] # get right table
-            root = QueryNode("JOIN", {"condition": first_join["condition"], "type": first_join["type"]}, [left_node, right_node]) # create join node
+    # get attributes from SELECT statment
+    for alias, attrs in select_proj.items():
+        if alias != "*":
+            for a in attrs:
+                needed[alias].add(f"{alias}.{a}")
 
-            for join in joins[1:]: # handles joins with already joined tables (i.e. if you have 3 tables - (A+B)+C )
-                right_node = table_nodes_wrapped[join["right_table"]]
-                root = QueryNode("JOIN", {"condition": join["condition"], "type": join["type"]}, [root, right_node])
+    # extract attributes in join conditions
+    def attrs_from_cond(cond):
+        if not cond:
+            return []
+        parts = cond.replace("=", " ").replace("<", " ").replace(">", " ").split() # split on operators
+        return [p for p in parts if "." in p] # return only parts with table.attribute
+
+    def collect_join_attrs(node): # recursively collect join attributes
+        if node.node_type == "JOIN":
+            attrs = attrs_from_cond(node.details.get("condition")) # get attributes from join condition
+            for a in attrs:
+                alias = a.split(".")[0] # get table alias
+                if alias in needed: # check if alias is valid
+                    needed[alias].add(a) # add to needed set
+
+            collect_join_attrs(node.children[0]) # recurse leftward down tree
+            collect_join_attrs(node.children[1]) # recurse rightward down tree
+
+    collect_join_attrs(root) # start collecting from root
 
 
-        # 3. multi table condition above joins
-        if multi_table:
-            cond_str = " AND ".join(c["condition"] for c in multi_table) #include condition
-            root = QueryNode("SELECT", {"condition": cond_str}, [root])
+    def attach_projects(node):
+        # If this node is TABLE or SELECT whose child is TABLE, insert PROJECT above subtree
+        if node.node_type == "TABLE":
+            alias = None
+            for a, tname in tables.items(): # find alias for table
+                if tname == node.details["name"]: # Matches table name to child table
+                    alias = a
+                    break # stop loop once found
+            proj_list = sorted(needed[alias]) # get needed attributes for this table
+            return QueryNode("PROJECT", {"projections": proj_list}, [node]) # build project node above table
 
+        if node.node_type == "SELECT" and node.children[0].node_type == "TABLE": # if select node is above table node need to insert project above select
+            child = node.children[0] # get table
+            alias = None
+            for a, tname in tables.items(): # find alias for table
+                if tname == child.details["name"]: # Matches table name to child table
+                    alias = a
+                    break # stop loop once found
+
+            proj_list = sorted(needed[alias]) # get needed attributes for this table
+           
+            return QueryNode("PROJECT", {"projections": proj_list}, [QueryNode("SELECT", node.details, [child])]) # build project node above selection its child table node
+
+        # JOIN: recurse both sides
+        if node.node_type == "JOIN":
+            left = attach_projects(node.children[0]) # recurse left child
+            right = attach_projects(node.children[1]) # recurse right child
+            return QueryNode("JOIN", node.details, [left, right]) # rebuild join with new children
+
+        # Higher nodes (GROUP BY, HAVING, etc): recurse single child
+        if node.children: # if node has children
+            node.children = [attach_projects(node.children[0])] # recurse single child
+        return node
+
+    root = attach_projects(root) # attach projects recursively
+
+    return groupby_having_orderby(parsed_sql, root)
 
 
 
@@ -895,34 +935,44 @@ if __name__ == "__main__":
 
     parsed_sql = parse_sql_txt(input_file)
     if parsed_sql:
-        query_tree = build_query_tree(parsed_sql)
         
-        # Build Graphviz graph
+        print("Canonical tree generated as 'canonical.png'\n\n")
+        query_tree = build_canonical(parsed_sql)
         initial_graph = build_graph(query_tree)
-        
-        # Render as PNG
-        initial_graph.render("initial_tree", view=False, format="png")
+        initial_graph.render("canonical", view=True, format="png")
 
         
         # 1. Push down selections (rule 1 & 2)
+        print("Step 1. Push down selections")
+        print("\tIdentified conjunctive selections, broke them up individually,\n\tand pushed them down as far as possible.")
+        print("\tSelections involving multiple tables were kept above joins.\n")
+        print("Step 1 tree generated as 'step1.png'\n\n")
         step1 = optimized_step1(parsed_sql)
         step1_tree = build_graph(step1)
         step1_tree.render("step1", view=False, format="png")
 
         
         # 2. small selectivity first - equal before range (rule 3)
+        print("Step 2. Reorder selections by selectivity")
+        print("\tSelections with high selectivity (equality conditions) were pushed\n\tcloser to the table, while low selectivity (range conditions) were placed higher.\n")
+        print("Step 2 tree generated as 'step2.png'\n\n")
         step2 = optimized_step2(parsed_sql)
         step2_tree = build_graph(step2)
         step2_tree.render("step2", view=False, format="png")
 
-
         # 3. Replace cartesian product and selection with join (rule 4)
+        print("Step 3. Replace cartesian products with joins")
+        print("\tCROSS JOINs followed by selection conditions that could be\n\tconverted into equi joins were replaced with INNER JOINs.\n")
+        print("Step 3 tree generated as 'step3.png'\n\n")
         step3 = optimized_step3(parsed_sql)
         step3_tree = build_graph(step3)
         step3_tree.render("step3", view=False, format="png")
 
 
         # 4. Push projections down (rule 5)
+        print("Step 4. Push down projections")
+        print("\tProjections were pushed down to the lowest possible points in the tree,\n\tbased on the attributes needed for higher operations.\n")
+        print("Step 4 tree generated as 'step4.png'\n\n")
         step4 = optimized_step4(parsed_sql)
         step4_tree = build_graph(step4)
         step4_tree.render("step4", view=False, format="png")
