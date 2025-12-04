@@ -754,10 +754,46 @@ def optimized_step3(parsed_sql):
     # 4. Build JOIN tree
     joins = parsed_sql.get("from", {}).get("joins", []) # grab join dict
     if not joins: # if there are no Inner/outer joints, create cross joins
-        #
-        # TODO add logic for when a cross join is present
-        # 
-    # else: # if joins already exist (inner/outer)
+        table_list = list(table_nodes_wrapped.values())
+
+        # If only one table, nothing to join
+        if len(table_list) == 1:
+            root = table_list[0]
+        else:
+            # Build the CROSS JOIN chain
+            root = table_list[0]
+            for tnode in table_list[1:]:
+                root = QueryNode(
+                    "JOIN",
+                    {"condition": None, "type": "CROSS JOIN"},
+                    [root, tnode]
+                )
+
+        # convert CROSS JOIN to INNER JOIN if multi table condition is equijoin
+        equi_join_preds = []
+        leftover_select_preds = []
+
+        for cond in multi_table:
+            condition_str = cond["condition"]
+            op = cond["operator"]
+
+            # extract left and right sides
+            left, right = condition_str.split(f" {op} ")
+
+            # check if operator is = and both sides use a table
+            if op == "=" and "." in left and "." in right:
+                equi_join_preds.append(condition_str)
+            else:
+                leftover_select_preds.append(condition_str)
+
+        # If equi-join predicates found, rewrite root join
+        if equi_join_preds:
+            root.details["type"] = "INNER JOIN"
+            root.details["condition"] = " AND ".join(equi_join_preds)
+
+        # keep only leftover predicates for the SELECT above join
+        multi_table = [{"condition": p} for p in leftover_select_preds]
+    else: # if joins already exist (inner/outer)
         first_join = joins[0]
         left_node = table_nodes_wrapped[first_join["left_table"]] # get left table
         right_node = table_nodes_wrapped[first_join["right_table"]] # get right table
@@ -928,25 +964,25 @@ if __name__ == "__main__":
         initial_graph = build_graph(query_tree)
         
         # Render as PNG
-        initial_graph.render("initial_tree", view=False, format="png")
+        initial_graph.render("initial_tree", view=True, format="png")
 
         
         # 1. Push down selections (rule 1 & 2)
         step1 = optimized_step1(parsed_sql)
         step1_tree = build_graph(step1)
-        step1_tree.render("step1", view=False, format="png")
+        step1_tree.render("step1", view=True, format="png")
 
         
         # 2. small selectivity first - equal before range (rule 3)
         step2 = optimized_step2(parsed_sql)
         step2_tree = build_graph(step2)
-        step2_tree.render("step2", view=False, format="png")
+        step2_tree.render("step2", view=True, format="png")
 
 
         # 3. Replace cartesian product and selection with join (rule 4)
-        # step3 = optimized_step3(parsed_sql)
-        # step3_tree = build_graph(step3)
-        # step3_tree.render("step3", view=True, format="png")
+        step3 = optimized_step3(parsed_sql)
+        step3_tree = build_graph(step3)
+        step3_tree.render("step3", view=True, format="png")
 
 
         # 4. Push projections down (rule 5)
